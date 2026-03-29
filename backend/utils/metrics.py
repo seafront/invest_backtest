@@ -3,7 +3,7 @@ import numpy as np
 
 def total_return(equity_curve: list[float]) -> float:
     """Calculate total return as a percentage."""
-    if len(equity_curve) < 2:
+    if len(equity_curve) < 2 or equity_curve[0] == 0:
         return 0.0
     return (equity_curve[-1] - equity_curve[0]) / equity_curve[0] * 100
 
@@ -12,8 +12,12 @@ def sharpe_ratio(equity_curve: list[float], risk_free_rate: float = 0.02) -> flo
     """Calculate annualized Sharpe ratio from daily equity values."""
     if len(equity_curve) < 2:
         return 0.0
-    returns = np.diff(equity_curve) / equity_curve[:-1]
-    if np.std(returns) == 0:
+    eq = np.array(equity_curve, dtype=float)
+    mask = eq[:-1] != 0
+    if not mask.any():
+        return 0.0
+    returns = np.diff(eq)[mask] / eq[:-1][mask]
+    if len(returns) < 2 or np.std(returns) == 0:
         return 0.0
     daily_rf = risk_free_rate / 252
     excess_returns = returns - daily_rf
@@ -29,9 +33,10 @@ def max_drawdown(equity_curve: list[float]) -> float:
     for val in equity_curve:
         if val > peak:
             peak = val
-        dd = (peak - val) / peak * 100
-        if dd > max_dd:
-            max_dd = dd
+        if peak > 0:
+            dd = (peak - val) / peak * 100
+            if dd > max_dd:
+                max_dd = dd
     return max_dd
 
 

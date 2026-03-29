@@ -1,4 +1,5 @@
-from datetime import date as date_type
+import logging
+from datetime import date as date_type, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
@@ -6,12 +7,37 @@ from models import Backtest, Trade
 from schemas import BacktestRequest, BacktestResult, BacktestSummary
 from services.data_fetcher import get_cached_data, fetch_and_cache
 from services.backtest_engine import run_backtest
+from services.strategies import get_strategy
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/backtests", tags=["backtests"])
 
 
 @router.post("/run", response_model=BacktestResult)
 def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
+    # Validate strategy and parameters
+    try:
+        strategy = get_strategy(req.strategy_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    for schema in strategy.param_schema:
+        name = schema["name"]
+        if name in req.params:
+            val = req.params[name]
+            if val < schema["min"] or val > schema["max"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Parameter '{name}' must be between {schema['min']} and {schema['max']}, got {val}",
+                )
+
+    if req.start_date >= req.end_date:
+        raise HTTPException(status_code=400, detail="start_date must be before end_date")
+
+    if req.initial_capital <= 0:
+        raise HTTPException(status_code=400, detail="initial_capital must be positive")
+
     # Try cached data first, auto-fetch if missing or incomplete
     try:
         df = get_cached_data(db, req.ticker, req.start_date, req.end_date)
@@ -27,7 +53,6 @@ def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail=f"Failed to fetch data for {req.ticker}: {e}")
     else:
         # Check if cached data covers the requested range
-        from datetime import timedelta
         data_start = df.iloc[0]["date"]
         req_start = req.start_date
         # If cached data starts more than 7 days after requested start, re-fetch
@@ -35,8 +60,8 @@ def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
             try:
                 fetch_and_cache(db, req.ticker, req.start_date, req.end_date)
                 df = get_cached_data(db, req.ticker, req.start_date, req.end_date)
-            except Exception:
-                pass  # Use whatever we have
+            except Exception as e:
+                logger.warning(f"Re-fetch failed for {req.ticker}, using cached data: {e}")
 
     try:
         result = run_backtest(df, req.strategy_name, req.params, req.initial_capital)
@@ -110,6 +135,15 @@ def get_backtest(backtest_id: int, db: Session = Depends(get_db)):
         for t in backtest.trades
     ]
 
+    # Recompute indicators from cached data
+    indicators = None
+    try:
+        df = get_cached_data(db, backtest.ticker, backtest.start_date, backtest.end_date)
+        strategy = get_strategy(backtest.strategy_name)
+        indicators = strategy.compute_indicators(df, backtest.params)
+    except (ValueError, KeyError) as e:
+        logger.warning(f"Could not compute indicators for backtest {backtest_id}: {e}")
+
     return {
         "id": backtest.id,
         "ticker": backtest.ticker,
@@ -124,7 +158,7 @@ def get_backtest(backtest_id: int, db: Session = Depends(get_db)):
         "win_rate": backtest.win_rate,
         "equity_curve": backtest.equity_curve or [],
         "trades": trades,
-        "indicators": None,
+        "indicators": indicators,
         "created_at": backtest.created_at,
     }
 

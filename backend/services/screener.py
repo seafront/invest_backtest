@@ -1,3 +1,4 @@
+import logging
 import yfinance as yf
 import pandas as pd
 from datetime import date
@@ -5,6 +6,10 @@ from sqlalchemy.orm import Session
 from services.data_fetcher import fetch_and_cache, get_cached_data
 from services.backtest_engine import run_backtest
 from services.strategies import list_strategies
+
+logger = logging.getLogger(__name__)
+
+MIN_BARS_FOR_BACKTEST = 60
 
 # Major US stocks pool (large-cap focused)
 DEFAULT_POOL = [
@@ -35,7 +40,8 @@ def screen_by_market_cap(pool: list[str] | None = None, top_n: int = 5) -> list[
                     "market_cap": market_cap,
                     "market_cap_str": _format_market_cap(market_cap),
                 })
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to get market cap for {ticker}: {e}")
             continue
 
     # Sort by market cap descending
@@ -65,10 +71,11 @@ def screen_by_strategy(
             try:
                 fetch_and_cache(db, ticker, start_date, end_date)
                 df = get_cached_data(db, ticker, start_date, end_date)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to fetch data for {ticker}: {e}")
                 continue
 
-        if len(df) < 60:  # Not enough data for meaningful backtest
+        if len(df) < MIN_BARS_FOR_BACKTEST:
             continue
 
         for strategy in strategies:
@@ -84,7 +91,8 @@ def screen_by_strategy(
                     "win_rate": result["win_rate"],
                     "trades_count": len([t for t in result["trades"] if t["action"] == "SELL"]),
                 })
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Backtest failed for {ticker}/{strategy.name}: {e}")
                 continue
 
     # Sort by total_return descending

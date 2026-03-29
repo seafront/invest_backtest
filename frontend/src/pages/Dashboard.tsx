@@ -16,8 +16,12 @@ export default function Dashboard() {
   }, []);
 
   const handleDelete = async (id: number) => {
-    await deleteBacktest(id);
-    load();
+    try {
+      await deleteBacktest(id);
+      load();
+    } catch {
+      alert("Failed to delete backtest");
+    }
   };
 
   return (

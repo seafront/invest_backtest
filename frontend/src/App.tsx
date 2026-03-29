@@ -5,6 +5,7 @@ import BacktestRun from "./pages/BacktestRun";
 import BacktestResult from "./pages/BacktestResult";
 import Screener from "./pages/Screener";
 import Strategies from "./pages/Strategies";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const navStyle: React.CSSProperties = {
   color: "#94a3b8",
@@ -58,14 +59,16 @@ function App() {
 
         {/* Content */}
         <main style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 24px" }}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/data" element={<DataManager />} />
-            <Route path="/backtest" element={<BacktestRun />} />
-            <Route path="/results/:id" element={<BacktestResult />} />
-            <Route path="/strategies" element={<Strategies />} />
-            <Route path="/screener" element={<Screener />} />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/data" element={<DataManager />} />
+              <Route path="/backtest" element={<BacktestRun />} />
+              <Route path="/results/:id" element={<BacktestResult />} />
+              <Route path="/strategies" element={<Strategies />} />
+              <Route path="/screener" element={<Screener />} />
+            </Routes>
+          </ErrorBoundary>
         </main>
       </div>
     </BrowserRouter>
