@@ -342,11 +342,179 @@ const STRATEGY_DETAILS: Record<string, {
     ],
     best_for: "거래량이 풍부한 대형주/ETF, 기관 매매가 활발한 종목 (예: SPY, AAPL, QQQ)",
   },
+  ema_crossover: {
+    how_it_works:
+      "MA Crossover의 단기 버전입니다. SMA 대신 EMA(지수이동평균)를 사용하여 최근 가격에 더 높은 가중치를 부여합니다.\n\n" +
+      "기본 설정 EMA5/EMA20은 1~4주 단위의 단기 추세를 추종하며, " +
+      "SMA 기반 MA Crossover(10/50)보다 2~3배 빠르게 시그널을 생성합니다.\n\n" +
+      "EMA 계산: 최근 가격에 지수적으로 높은 가중치 → 가격 변화에 즉각 반응",
+    buy_rule:
+      "Fast EMA가 Slow EMA를 상향 돌파 → 매수\n" +
+      "• 전일: EMA5 ≤ EMA20\n" +
+      "• 당일: EMA5 > EMA20\n" +
+      "• 단기 상승 모멘텀 시작",
+    sell_rule:
+      "Fast EMA가 Slow EMA를 하향 돌파 → 매도\n" +
+      "• 전일: EMA5 ≥ EMA20\n" +
+      "• 당일: EMA5 < EMA20\n" +
+      "• 단기 하락 모멘텀 시작",
+    strengths: [
+      "SMA보다 빠른 반응 — 추세 전환 조기 포착",
+      "단기 트레이딩에 적합한 빠른 시그널",
+      "EMA 가중치로 노이즈 일부 필터링",
+      "파라미터가 2개로 단순",
+    ],
+    weaknesses: [
+      "빠른 만큼 거짓 시그널도 많음 (Whipsaw)",
+      "거래 빈도가 높아 수수료 부담",
+      "횡보장에서 반복 손실",
+      "장기 추세를 무시할 수 있음",
+    ],
+    best_for: "단기 모멘텀이 강한 종목, 변동성 높은 기술주/성장주",
+  },
+  momentum_roc: {
+    how_it_works:
+      "ROC(Rate of Change, 변화율)는 N일 전 가격 대비 현재 가격의 변화율(%)을 측정합니다.\n\n" +
+      "ROC = (현재 종가 - N일 전 종가) / N일 전 종가 × 100\n\n" +
+      "ROC가 양의 임계값(+3%)을 넘으면 강한 상승 모멘텀으로 매수, " +
+      "음의 임계값(-3%)을 밑돌면 모멘텀 소멸로 매도합니다.\n\n" +
+      "가격의 '속도'를 측정하는 가장 직관적인 방법입니다.",
+    buy_rule:
+      "ROC가 양의 임계값 초과 → 매수\n" +
+      "• ROC > +3% (기본값)\n" +
+      "• 최근 10일간 3% 이상 상승 = 강한 모멘텀\n" +
+      "• 추세 시작/가속 구간 포착",
+    sell_rule:
+      "ROC가 음의 임계값 하회 → 매도\n" +
+      "• ROC < -3% (기본값)\n" +
+      "• 최근 10일간 3% 이상 하락 = 모멘텀 소멸\n" +
+      "• 추세 약화/전환 시 탈출",
+    strengths: [
+      "가격 모멘텀을 직접 측정 — 가장 직관적",
+      "임계값 조절로 민감도 쉽게 조정",
+      "추세 가속 구간을 잘 포착",
+      "계산이 단순하고 해석이 명확",
+    ],
+    weaknesses: [
+      "갑작스러운 뉴스/이벤트에 과민 반응",
+      "임계값 설정에 따라 성과 차이 큼",
+      "횡보장에서 임계값 근처를 왔다갔다하며 손실",
+      "ROC가 높을 때 이미 상당 부분 오른 후일 수 있음",
+    ],
+    best_for: "모멘텀이 강한 성장주, 기술주, 레버리지 ETF",
+  },
+  adx_trend: {
+    how_it_works:
+      "ADX(Average Directional Index)는 추세의 '강도'를 0~100으로 측정합니다. 방향은 +DI/-DI로 판단합니다.\n\n" +
+      "• ADX > 25: 강한 추세 존재\n" +
+      "• +DI > -DI: 상승 추세\n" +
+      "• -DI > +DI: 하락 추세\n\n" +
+      "ADX가 강한 추세를 보이고(>25) 방향이 상승(+DI > -DI)일 때만 진입합니다. " +
+      "추세가 약해지거나 방향이 바뀌면 청산합니다.\n\n" +
+      "다른 전략이 '언제' 사고팔지를 결정한다면, ADX는 '지금 매매할 가치가 있는지'를 판단합니다.",
+    buy_rule:
+      "강한 상승 추세 확인 → 매수\n" +
+      "• ADX > 25 (추세 강도 충분)\n" +
+      "• +DI > -DI (상승 방향)\n" +
+      "• 두 조건 동시 만족 시 진입",
+    sell_rule:
+      "추세 약화 또는 방향 전환 → 매도\n" +
+      "• ADX < 25 (추세 약화) 또는\n" +
+      "• -DI > +DI (하락 전환)\n" +
+      "• 둘 중 하나만 해당되면 청산",
+    strengths: [
+      "추세 강도를 직접 측정 — 횡보장 자동 필터링",
+      "강한 추세에서만 진입하여 수익률 향상",
+      "방향(+DI/-DI)과 강도(ADX)를 동시에 판단",
+      "다른 전략의 필터로도 활용 가능",
+    ],
+    weaknesses: [
+      "후행 지표 — ADX가 25를 넘을 때는 이미 추세 진행 중",
+      "추세 초기 진입을 놓칠 수 있음",
+      "ADX 계산이 복잡하여 디버깅 어려움",
+      "횡보장에서 ADX가 25 근처를 오가면 불안정",
+    ],
+    best_for: "추세가 명확한 종목, 다른 전략의 보조 필터로 활용",
+  },
+  parabolic_sar: {
+    how_it_works:
+      "Parabolic SAR(Stop and Reverse)은 가격 차트 위/아래에 점(SAR)을 찍어 추세 방향을 표시합니다.\n\n" +
+      "• SAR이 가격 아래: 상승 추세 (매수 보유)\n" +
+      "• SAR이 가격 위: 하락 추세 (매도 또는 관망)\n\n" +
+      "SAR은 가속 인수(AF)에 의해 가격에 점점 가까워지다가, 가격이 SAR을 돌파하면 반전됩니다.\n\n" +
+      "시각적으로 매우 직관적 — 차트의 점 위치만 보면 추세 방향을 즉시 알 수 있습니다.",
+    buy_rule:
+      "SAR이 가격 위에서 아래로 전환 → 매수\n" +
+      "• 전일: 종가 < SAR (하락 추세)\n" +
+      "• 당일: 종가 > SAR (상승 전환)\n" +
+      "• SAR 점이 캔들 아래로 이동 = 상승 시작",
+    sell_rule:
+      "SAR이 가격 아래에서 위로 전환 → 매도\n" +
+      "• 전일: 종가 > SAR (상승 추세)\n" +
+      "• 당일: 종가 < SAR (하락 전환)\n" +
+      "• SAR 점이 캔들 위로 이동 = 하락 시작",
+    strengths: [
+      "시각적으로 매우 직관적 — 점 위치만 보면 됨",
+      "자동 트레일링 스탑 역할 (SAR이 가격을 따라감)",
+      "추세 전환 시점을 명확하게 포착",
+      "시간이 지날수록 SAR이 가격에 접근 → 자연스러운 이익 실현",
+    ],
+    weaknesses: [
+      "횡보장에서 잦은 반전으로 연속 손실 (Whipsaw)",
+      "강한 추세에서 너무 일찍 청산할 수 있음",
+      "갭(Gap) 발생 시 부정확",
+      "가속 인수(AF) 설정에 민감",
+    ],
+    best_for: "명확한 추세가 있는 종목, 트레일링 스탑이 필요한 단기 매매",
+  },
+  keltner: {
+    how_it_works:
+      "켈트너 채널은 EMA를 중심으로 ATR(Average True Range) 배수만큼 상하 채널을 구성합니다.\n\n" +
+      "• 중심선: EMA (기본 20일)\n" +
+      "• 상단 채널: EMA + N × ATR\n" +
+      "• 하단 채널: EMA - N × ATR\n\n" +
+      "볼린저 밴드와 유사하지만, 표준편차 대신 ATR(실제 변동폭)을 사용합니다. " +
+      "볼린저는 평균 회귀(역추세)에 적합하고, 켈트너는 돌파(추세 추종)에 적합합니다.\n\n" +
+      "상단 채널 돌파 = 강한 상승 모멘텀, 하단 채널 이탈 = 하락 전환",
+    buy_rule:
+      "종가가 상단 채널을 돌파 → 매수\n" +
+      "• 종가 > EMA + N × ATR\n" +
+      "• 평상시 변동 범위를 벗어난 강한 상승\n" +
+      "• 추세 시작/가속 시그널",
+    sell_rule:
+      "종가가 하단 채널을 이탈 → 매도\n" +
+      "• 종가 < EMA - N × ATR\n" +
+      "• 평상시 변동 범위를 벗어난 강한 하락\n" +
+      "• 추세 약화/전환 시그널",
+    strengths: [
+      "ATR 기반으로 실제 변동성을 정확히 반영",
+      "볼린저보다 채널이 안정적 (ATR이 표준편차보다 노이즈에 강함)",
+      "추세 추종에 최적화된 채널 전략",
+      "돌파 강도를 ATR 배수로 조절 가능",
+    ],
+    weaknesses: [
+      "횡보장에서 채널 내에서만 움직이면 시그널 없음",
+      "돌파 후 즉시 되돌림 시 손실",
+      "ATR 계산에 고가/저가를 사용하여 갭에 민감",
+      "파라미터 3개(EMA, ATR기간, 배수)로 조정이 필요",
+    ],
+    best_for: "추세 돌파가 명확한 종목, 변동성 확대 구간, 레버리지 ETF",
+  },
 };
+
+const CATEGORIES: { name: string; label: string; color: string; strategies: string[] }[] = [
+  { name: "benchmark", label: "벤치마크", color: "#94a3b8", strategies: ["buy_and_hold"] },
+  { name: "long_trend", label: "장기 추세", color: "#22c55e", strategies: ["golden_cross"] },
+  { name: "mid_trend", label: "중기 추세", color: "#3b82f6", strategies: ["ma_crossover", "macd", "dual_ma_rsi"] },
+  { name: "short_trend", label: "단기 추세", color: "#06b6d4", strategies: ["ema_crossover", "momentum_roc", "adx_trend", "parabolic_sar", "keltner"] },
+  { name: "mid_breakout", label: "중단기 돌파", color: "#f59e0b", strategies: ["breakout"] },
+  { name: "short_reversion", label: "단기 역추세", color: "#8b5cf6", strategies: ["rsi", "bollinger", "stochastic", "vwap"] },
+];
 
 export default function Strategies() {
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [selected, setSelected] = useState<string>("");
+  const [activeCategory, setActiveCategory] = useState("benchmark");
 
   useEffect(() => {
     listStrategies().then((r) => {
@@ -357,6 +525,7 @@ export default function Strategies() {
 
   const current = strategies.find((s) => s.name === selected);
   const details = selected ? STRATEGY_DETAILS[selected] : null;
+  const currentCategory = CATEGORIES.find((c) => c.name === activeCategory);
 
   const sectionStyle: React.CSSProperties = {
     background: "#0f172a",
@@ -368,30 +537,58 @@ export default function Strategies() {
   return (
     <div>
       <h2 style={{ color: "#e2e8f0", marginBottom: 8 }}>전략 가이드</h2>
-      <p style={{ color: "#64748b", fontSize: 14, marginBottom: 24 }}>
+      <p style={{ color: "#64748b", fontSize: 14, marginBottom: 20 }}>
         각 트레이딩 전략의 작동 원리와 매수/매도 기준을 확인하세요
       </p>
 
-      {/* Strategy Tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
-        {strategies.map((s) => (
+      {/* Category Tabs */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        {CATEGORIES.map((cat) => (
           <button
-            key={s.name}
-            onClick={() => setSelected(s.name)}
+            key={cat.name}
+            onClick={() => {
+              setActiveCategory(cat.name);
+              const first = cat.strategies[0];
+              if (first) setSelected(first);
+            }}
             style={{
-              background: selected === s.name ? "#3b82f6" : "#1e1e2e",
-              color: selected === s.name ? "#fff" : "#94a3b8",
-              border: selected === s.name ? "none" : "1px solid #334155",
-              borderRadius: 8,
-              padding: "10px 20px",
-              fontSize: 14,
+              background: activeCategory === cat.name ? cat.color : "transparent",
+              color: activeCategory === cat.name ? "#fff" : cat.color,
+              border: `1px solid ${activeCategory === cat.name ? cat.color : "#334155"}`,
+              borderRadius: 20,
+              padding: "6px 16px",
+              fontSize: 13,
               fontWeight: 600,
               cursor: "pointer",
             }}
           >
-            {s.display_name}
+            {cat.label}
           </button>
         ))}
+      </div>
+
+      {/* Strategy Tabs within Category */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+        {currentCategory && strategies
+          .filter((s) => currentCategory.strategies.includes(s.name))
+          .map((s) => (
+            <button
+              key={s.name}
+              onClick={() => setSelected(s.name)}
+              style={{
+                background: selected === s.name ? "#1e1e2e" : "transparent",
+                color: selected === s.name ? "#e2e8f0" : "#64748b",
+                border: selected === s.name ? `2px solid ${currentCategory.color}` : "1px solid #334155",
+                borderRadius: 8,
+                padding: "10px 20px",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {s.display_name}
+            </button>
+          ))}
       </div>
 
       {current && details && (
