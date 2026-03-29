@@ -52,7 +52,9 @@ class BacktestRequest(BaseModel):
     params: dict
     start_date: date
     end_date: date
+    invest_mode: str = "lump_sum"  # "lump_sum" or "dca"
     initial_capital: float = 100000.0
+    monthly_contribution: float = 0.0
 
 
 class TradeResult(BaseModel):
@@ -78,8 +80,12 @@ class BacktestSummary(BaseModel):
     params: dict
     start_date: date
     end_date: date
+    invest_mode: str = "lump_sum"
     initial_capital: float
+    monthly_contribution: float = 0.0
+    total_invested: float | None
     total_return: float | None
+    cagr: float | None
     sharpe_ratio: float | None
     max_drawdown: float | None
     win_rate: float | None
@@ -96,8 +102,12 @@ class BacktestResult(BaseModel):
     params: dict
     start_date: date
     end_date: date
+    invest_mode: str = "lump_sum"
     initial_capital: float
+    monthly_contribution: float = 0.0
+    total_invested: float
     total_return: float
+    cagr: float
     sharpe_ratio: float
     max_drawdown: float
     win_rate: float

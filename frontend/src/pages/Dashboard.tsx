@@ -57,7 +57,7 @@ export default function Dashboard() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #334155" }}>
-                {["#", "Ticker", "Strategy", "Params", "Period", "Return", "Sharpe", "Max DD", "Win Rate", ""].map(
+                {["#", "Ticker", "Strategy", "Params", "Mode", "Period", "Return", "CAGR", "Sharpe", "Max DD", "Win Rate", ""].map(
                   (h) => (
                     <th
                       key={h}
@@ -99,6 +99,13 @@ export default function Dashboard() {
                       </span>
                     ))}
                   </td>
+                  <td style={{ padding: "8px 10px", fontSize: 11 }}>
+                    {(b.invest_mode || "lump_sum") === "dca" ? (
+                      <span style={{ color: "#8b5cf6" }}>DCA ${(b.monthly_contribution || 0).toLocaleString()}/mo</span>
+                    ) : (
+                      <span style={{ color: "#3b82f6" }}>${b.initial_capital.toLocaleString()}</span>
+                    )}
+                  </td>
                   <td style={{ color: "#94a3b8", padding: "8px 10px", fontSize: 12 }}>
                     {b.start_date} ~ {b.end_date}
                   </td>
@@ -110,6 +117,14 @@ export default function Dashboard() {
                     }}
                   >
                     {b.total_return?.toFixed(2)}%
+                  </td>
+                  <td
+                    style={{
+                      color: (b.cagr ?? 0) >= 0 ? "#22c55e" : "#ef4444",
+                      padding: "8px 10px",
+                    }}
+                  >
+                    {b.cagr?.toFixed(2)}%
                   </td>
                   <td style={{ color: "#e2e8f0", padding: "8px 10px" }}>
                     {b.sharpe_ratio?.toFixed(2)}

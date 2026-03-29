@@ -15,7 +15,9 @@ export default function StrategyForm({ onSubmit, loading }: Props) {
   const [params, setParams] = useState<Record<string, number>>({});
   const [startDate, setStartDate] = useState("2022-01-01");
   const [endDate, setEndDate] = useState("2024-12-31");
+  const [investMode, setInvestMode] = useState<"lump_sum" | "dca">("lump_sum");
   const [capital, setCapital] = useState(100000);
+  const [monthlyContribution, setMonthlyContribution] = useState(1000);
 
   useEffect(() => {
     listStrategies().then((r) => {
@@ -54,7 +56,9 @@ export default function StrategyForm({ onSubmit, loading }: Props) {
       params,
       start_date: startDate,
       end_date: endDate,
-      initial_capital: capital,
+      invest_mode: investMode,
+      initial_capital: investMode === "lump_sum" ? capital : 0,
+      monthly_contribution: investMode === "dca" ? monthlyContribution : 0,
     });
   };
 
@@ -75,6 +79,19 @@ export default function StrategyForm({ onSubmit, loading }: Props) {
     display: "block",
   };
 
+  const modeButtonStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    padding: "10px 16px",
+    border: active ? "2px solid #3b82f6" : "1px solid #334155",
+    borderRadius: 8,
+    background: active ? "rgba(59, 130, 246, 0.1)" : "#0f172a",
+    color: active ? "#3b82f6" : "#64748b",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    textAlign: "center",
+  });
+
   return (
     <form onSubmit={handleSubmit} style={{ background: "#1e1e2e", borderRadius: 8, padding: 24, marginBottom: 24 }}>
       <h3 style={{ color: "#e2e8f0", marginBottom: 16 }}>Backtest Configuration</h3>
@@ -82,26 +99,18 @@ export default function StrategyForm({ onSubmit, loading }: Props) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <div>
           <label style={labelStyle}>Ticker</label>
-          {tickers.length > 0 ? (
-            <select
-              value={ticker}
-              onChange={(e) => setTicker(e.target.value)}
-              style={inputStyle}
-            >
-              {tickers.map((t) => (
-                <option key={t.ticker} value={t.ticker}>
-                  {t.ticker} ({t.start_date} ~ {t.end_date})
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              value={ticker}
-              onChange={(e) => setTicker(e.target.value.toUpperCase())}
-              placeholder="e.g. AAPL"
-              style={inputStyle}
-            />
-          )}
+          <input
+            list="ticker-list"
+            value={ticker}
+            onChange={(e) => setTicker(e.target.value.toUpperCase())}
+            placeholder="e.g. AAPL"
+            style={inputStyle}
+          />
+          <datalist id="ticker-list">
+            {tickers.map((t) => (
+              <option key={t.ticker} value={t.ticker} />
+            ))}
+          </datalist>
         </div>
 
         <div>
@@ -138,18 +147,59 @@ export default function StrategyForm({ onSubmit, loading }: Props) {
             style={inputStyle}
           />
         </div>
+      </div>
 
-        <div>
-          <label style={labelStyle}>Initial Capital ($)</label>
-          <input
-            type="number"
-            value={capital}
-            onChange={(e) => setCapital(Number(e.target.value))}
-            min={1000}
-            step={1000}
-            style={inputStyle}
-          />
+      {/* Invest Mode Selection */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ ...labelStyle, marginBottom: 8 }}>Investment Mode</label>
+        <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+          <button
+            type="button"
+            onClick={() => setInvestMode("lump_sum")}
+            style={modeButtonStyle(investMode === "lump_sum")}
+          >
+            Lump Sum (거치식)
+          </button>
+          <button
+            type="button"
+            onClick={() => setInvestMode("dca")}
+            style={modeButtonStyle(investMode === "dca")}
+          >
+            DCA (적립식)
+          </button>
         </div>
+
+        {investMode === "lump_sum" ? (
+          <div>
+            <label style={labelStyle}>Initial Capital ($)</label>
+            <input
+              type="number"
+              value={capital}
+              onChange={(e) => setCapital(Number(e.target.value))}
+              min={1000}
+              step={1000}
+              style={inputStyle}
+            />
+            <p style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+              초기 자본금을 한 번에 투자합니다.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <label style={labelStyle}>Monthly Contribution ($)</label>
+            <input
+              type="number"
+              value={monthlyContribution}
+              onChange={(e) => setMonthlyContribution(Number(e.target.value))}
+              min={100}
+              step={100}
+              style={inputStyle}
+            />
+            <p style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+              매월 일정 금액을 투자합니다. 첫 달부터 시작합니다.
+            </p>
+          </div>
+        )}
       </div>
 
       {currentStrategy && currentStrategy.params.length > 0 && (

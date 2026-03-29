@@ -40,6 +40,16 @@ def max_drawdown(equity_curve: list[float]) -> float:
     return max_dd
 
 
+def cagr(total_invested: float, final_value: float, days: int) -> float:
+    """Calculate Compound Annual Growth Rate (%)."""
+    if total_invested <= 0 or final_value <= 0 or days <= 0:
+        return 0.0
+    years = days / 365.25
+    if years < 0.1:
+        return 0.0
+    return (pow(final_value / total_invested, 1 / years) - 1) * 100
+
+
 def win_rate(trades_pnl: list[float]) -> float:
     """Calculate win rate from list of trade PnLs (sell trades only)."""
     if not trades_pnl:

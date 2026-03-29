@@ -7,9 +7,11 @@ from .stochastic import StochasticOscillator
 from .dual_ma_rsi import DualMARSI
 from .breakout import BreakoutStrategy
 from .vwap import VWAPStrategy
+from .buy_and_hold import BuyAndHold
 
 # Registry: add new strategies here
 STRATEGY_REGISTRY: dict = {
+    "buy_and_hold": BuyAndHold(),
     "ma_crossover": MACrossover(),
     "rsi": RSIStrategy(),
     "bollinger": BollingerBands(),

@@ -67,16 +67,23 @@ export default function BacktestResult() {
         {result.ticker} — {result.strategy_name.replace(/_/g, " ")}
       </h2>
       <p style={{ color: "#64748b", marginBottom: 20, fontSize: 14 }}>
-        {result.start_date} ~ {result.end_date} · Initial: $
-        {result.initial_capital.toLocaleString()}
+        {result.start_date} ~ {result.end_date}
+        {(result.invest_mode || "lump_sum") === "dca" ? (
+          <span> · DCA (적립식) Monthly: ${(result.monthly_contribution || 0).toLocaleString()}</span>
+        ) : (
+          <span> · Lump Sum (거치식) Initial: ${result.initial_capital.toLocaleString()}</span>
+        )}
       </p>
 
       <MetricsPanel
         totalReturn={result.total_return}
+        cagr={result.cagr}
         sharpeRatio={result.sharpe_ratio}
         maxDrawdown={result.max_drawdown}
         winRate={result.win_rate}
         initialCapital={result.initial_capital}
+        totalInvested={result.total_invested}
+        monthlyContribution={result.monthly_contribution}
       />
 
       <EquityCurve data={result.equity_curve} />

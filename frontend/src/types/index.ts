@@ -56,7 +56,10 @@ export interface BacktestSummary {
   start_date: string;
   end_date: string;
   initial_capital: number;
+  monthly_contribution: number;
+  total_invested: number | null;
   total_return: number | null;
+  cagr: number | null;
   sharpe_ratio: number | null;
   max_drawdown: number | null;
   win_rate: number | null;
@@ -64,7 +67,9 @@ export interface BacktestSummary {
 }
 
 export interface BacktestResult extends BacktestSummary {
+  total_invested: number;
   total_return: number;
+  cagr: number;
   sharpe_ratio: number;
   max_drawdown: number;
   win_rate: number;
@@ -79,7 +84,9 @@ export interface BacktestRequest {
   params: Record<string, number>;
   start_date: string;
   end_date: string;
+  invest_mode: "lump_sum" | "dca";
   initial_capital: number;
+  monthly_contribution: number;
 }
 
 // Screening

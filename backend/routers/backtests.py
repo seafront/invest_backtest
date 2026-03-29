@@ -35,8 +35,14 @@ def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
     if req.start_date >= req.end_date:
         raise HTTPException(status_code=400, detail="start_date must be before end_date")
 
-    if req.initial_capital <= 0:
+    if req.invest_mode not in ("lump_sum", "dca"):
+        raise HTTPException(status_code=400, detail="invest_mode must be 'lump_sum' or 'dca'")
+
+    if req.invest_mode == "lump_sum" and req.initial_capital <= 0:
         raise HTTPException(status_code=400, detail="initial_capital must be positive")
+
+    if req.invest_mode == "dca" and req.monthly_contribution <= 0:
+        raise HTTPException(status_code=400, detail="monthly_contribution must be positive for DCA mode")
 
     # Try cached data first, auto-fetch if missing or incomplete
     try:
@@ -64,7 +70,7 @@ def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
                 logger.warning(f"Re-fetch failed for {req.ticker}, using cached data: {e}")
 
     try:
-        result = run_backtest(df, req.strategy_name, req.params, req.initial_capital)
+        result = run_backtest(df, req.strategy_name, req.params, req.initial_capital, req.monthly_contribution, req.invest_mode)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -75,8 +81,12 @@ def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
         params=req.params,
         start_date=req.start_date,
         end_date=req.end_date,
+        invest_mode=req.invest_mode,
         initial_capital=req.initial_capital,
+        monthly_contribution=req.monthly_contribution,
+        total_invested=result["total_invested"],
         total_return=result["total_return"],
+        cagr=result["cagr"],
         sharpe_ratio=result["sharpe_ratio"],
         max_drawdown=result["max_drawdown"],
         win_rate=result["win_rate"],
@@ -106,8 +116,12 @@ def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
         "params": backtest.params,
         "start_date": backtest.start_date,
         "end_date": backtest.end_date,
+        "invest_mode": backtest.invest_mode,
         "initial_capital": backtest.initial_capital,
+        "monthly_contribution": backtest.monthly_contribution,
+        "total_invested": result["total_invested"],
         "total_return": result["total_return"],
+        "cagr": result["cagr"],
         "sharpe_ratio": result["sharpe_ratio"],
         "max_drawdown": result["max_drawdown"],
         "win_rate": result["win_rate"],
@@ -151,8 +165,12 @@ def get_backtest(backtest_id: int, db: Session = Depends(get_db)):
         "params": backtest.params,
         "start_date": backtest.start_date,
         "end_date": backtest.end_date,
+        "invest_mode": backtest.invest_mode or "lump_sum",
         "initial_capital": backtest.initial_capital,
+        "monthly_contribution": backtest.monthly_contribution or 0.0,
+        "total_invested": backtest.total_invested or backtest.initial_capital,
         "total_return": backtest.total_return,
+        "cagr": backtest.cagr or 0.0,
         "sharpe_ratio": backtest.sharpe_ratio,
         "max_drawdown": backtest.max_drawdown,
         "win_rate": backtest.win_rate,

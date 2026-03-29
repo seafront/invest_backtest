@@ -1,19 +1,27 @@
 interface Props {
   totalReturn: number;
+  cagr?: number;
   sharpeRatio: number;
   maxDrawdown: number;
   winRate: number;
   initialCapital: number;
+  totalInvested?: number;
+  monthlyContribution?: number;
 }
 
 export default function MetricsPanel({
   totalReturn,
+  cagr,
   sharpeRatio,
   maxDrawdown,
   winRate,
   initialCapital,
+  totalInvested,
+  monthlyContribution,
 }: Props) {
-  const finalValue = initialCapital * (1 + totalReturn / 100);
+  const invested = totalInvested || initialCapital;
+  const finalValue = invested * (1 + totalReturn / 100);
+  const isDCA = (monthlyContribution || 0) > 0;
 
   const metrics = [
     {
@@ -21,6 +29,20 @@ export default function MetricsPanel({
       value: `${totalReturn.toFixed(2)}%`,
       color: totalReturn >= 0 ? "#22c55e" : "#ef4444",
     },
+    {
+      label: "CAGR",
+      value: `${(cagr ?? 0).toFixed(2)}%`,
+      color: (cagr ?? 0) >= 10 ? "#22c55e" : (cagr ?? 0) >= 0 ? "#eab308" : "#ef4444",
+    },
+    ...(isDCA
+      ? [
+          {
+            label: "Total Invested",
+            value: `$${invested.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+            color: "#3b82f6",
+          },
+        ]
+      : []),
     {
       label: "Final Value",
       value: `$${finalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
@@ -52,7 +74,7 @@ export default function MetricsPanel({
             background: "#1e1e2e",
             borderRadius: 8,
             padding: "16px 24px",
-            minWidth: 160,
+            minWidth: 150,
             flex: 1,
           }}
         >
