@@ -9,6 +9,9 @@ backend/*.db
 frontend/node_modules/
 frontend/dist/
 
+# Build cache
+backend/.vite/
+
 # IDE
 .vscode/
 .idea/
