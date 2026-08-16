@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { MarketCapResult, StrategyScreenResult, FullScreenResponse } from "../types";
+import type { FullScreenResponse } from "../types";
 import { fullScreening } from "../api/client";
+import { errMessage } from "../utils/error";
 
 export default function Screener() {
   const [startDate, setStartDate] = useState("2022-01-01");
   const [endDate, setEndDate] = useState("2024-12-31");
   const [capital, setCapital] = useState(100000);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<"idle" | "running" | "done">("idle");
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<FullScreenResponse | null>(null);
   const [error, setError] = useState("");
@@ -16,7 +16,6 @@ export default function Screener() {
 
   const handleRun = async () => {
     setLoading(true);
-    setStep("running");
     setError("");
     setResult(null);
     setProgress("Step 1: Fetching market cap data for 50 stocks...");
@@ -30,10 +29,8 @@ export default function Screener() {
         initial_capital: capital,
       });
       setResult(res.data);
-      setStep("done");
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message);
-      setStep("idle");
+    } catch (err: unknown) {
+      setError(errMessage(err));
     } finally {
       setLoading(false);
     }

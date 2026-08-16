@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import CandlestickChart from "../components/CandlestickChart";
 import { getStockData, getStockStats } from "../api/client";
+import { errMessage } from "../utils/error";
 import type { StockData, StockStats, YearlyReturn } from "../types";
 
 // 상승/하락 대비색. CVD 검증 통과 조합 (deutan ΔE 8.1). 부호는 색 외에
@@ -50,11 +51,6 @@ function Tile({ label, value, color }: { label: string; value: string; color?: s
       <div style={{ color: color ?? INK, fontSize: 22, fontWeight: 700 }}>{value}</div>
     </div>
   );
-}
-
-function errMessage(err: unknown): string {
-  const e = err as { response?: { data?: { detail?: string } }; message?: string };
-  return e?.response?.data?.detail ?? e?.message ?? "Failed to load";
 }
 
 interface Loaded {

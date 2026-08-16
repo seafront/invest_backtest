@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import StrategyForm from "../components/StrategyForm";
-import type { BacktestRequest, BacktestResult } from "../types";
+import type { BacktestRequest } from "../types";
 import { runBacktest } from "../api/client";
+import { errMessage } from "../utils/error";
 
 export default function BacktestRun() {
   const [loading, setLoading] = useState(false);
@@ -15,8 +16,8 @@ export default function BacktestRun() {
     try {
       const res = await runBacktest(req);
       navigate(`/results/${res.data.id}`, { state: res.data });
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message);
+    } catch (err: unknown) {
+      setError(errMessage(err));
     } finally {
       setLoading(false);
     }

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import type { BacktestResult as Result, StockData } from "../types";
 import { getBacktest, getStockData } from "../api/client";
+import { errMessage } from "../utils/error";
 import MetricsPanel from "../components/MetricsPanel";
 import EquityCurve from "../components/EquityCurve";
 import CandlestickChart from "../components/CandlestickChart";
@@ -10,31 +11,34 @@ import TradeLog from "../components/TradeLog";
 export default function BacktestResult() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
-  const [result, setResult] = useState<Result | null>(null);
   const [priceData, setPriceData] = useState<StockData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [fetched, setFetched] = useState<{ id: string; result: Result | null; error: string } | null>(
+    null
+  );
+
+  // BacktestRun에서 넘어온 경우 라우터 state를 그대로 쓰고 API를 호출하지 않는다.
+  const fromNav = (location.state as Result | null) ?? null;
+
+  // effect 본문에서 동기 setState를 하지 않도록 세 값을 모두 파생시킨다.
+  const current = fetched?.id === id ? fetched : null;
+  const result = fromNav ?? current?.result ?? null;
+  const error = fromNav ? "" : current?.error ?? "";
+  const loading = !fromNav && !!id && current === null;
 
   useEffect(() => {
-    // If navigated from BacktestRun with state, use it directly
-    if (location.state) {
-      setResult(location.state as Result);
-      setLoading(false);
-      return;
-    }
-    // Otherwise fetch from API
-    if (id) {
-      setLoading(true);
-      getBacktest(Number(id))
-        .then((r) => {
-          setResult(r.data);
-        })
-        .catch((err) => {
-          setError(err.response?.data?.detail || "Failed to load backtest");
-        })
-        .finally(() => setLoading(false));
-    }
-  }, [id, location.state]);
+    if (fromNav || !id) return;
+    let cancelled = false;
+    getBacktest(Number(id))
+      .then((r) => {
+        if (!cancelled) setFetched({ id, result: r.data, error: "" });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setFetched({ id, result: null, error: errMessage(err, "Failed to load backtest") });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, fromNav]);
 
   useEffect(() => {
     if (result) {

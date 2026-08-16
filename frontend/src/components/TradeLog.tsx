@@ -5,14 +5,16 @@ interface Props {
 }
 
 export default function TradeLog({ trades }: Props) {
-  // Calculate cumulative P&L
+  // Calculate cumulative P&L.
+  // 콜백 안에서 바깥 변수를 재할당하면 렌더 중 변형으로 취급되므로 순회로 누적한다.
+  const tradesWithCum: (TradeResult & { cumPnl: number | null })[] = [];
   let cumPnl = 0;
-  const tradesWithCum = trades.map((t) => {
+  for (const t of trades) {
     if (t.action === "SELL") {
       cumPnl += t.pnl;
     }
-    return { ...t, cumPnl: t.action === "SELL" ? cumPnl : null };
-  });
+    tradesWithCum.push({ ...t, cumPnl: t.action === "SELL" ? cumPnl : null });
+  }
 
   return (
     <div style={{ background: "#1e1e2e", borderRadius: 8, padding: 16, marginBottom: 24 }}>

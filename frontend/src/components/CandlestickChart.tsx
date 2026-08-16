@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { createChart, type IChartApi, type ISeriesApi, ColorType } from "lightweight-charts";
+import { createChart, type IChartApi, ColorType } from "lightweight-charts";
 import type { StockData, TradeResult, IndicatorPoint } from "../types";
 
 interface Props {

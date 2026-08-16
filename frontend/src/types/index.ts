@@ -106,6 +106,7 @@ export interface BacktestSummary {
   params: Record<string, number>;
   start_date: string;
   end_date: string;
+  invest_mode: "lump_sum" | "dca";
   initial_capital: number;
   monthly_contribution: number;
   total_invested: number | null;

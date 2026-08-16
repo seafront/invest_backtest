@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import type { TickerInfo } from "../types";
 import { fetchStockData, listTickers } from "../api/client";
+import { errMessage } from "../utils/error";
 
 export default function DataManager() {
   const [tickers, setTickers] = useState<TickerInfo[]>([]);
@@ -28,8 +29,8 @@ export default function DataManager() {
       const res = await fetchStockData(ticker.toUpperCase(), startDate, endDate);
       setMessage(`Fetched ${res.data.length} records for ${ticker.toUpperCase()}`);
       loadTickers();
-    } catch (err: any) {
-      setMessage(`Error: ${err.response?.data?.detail || err.message}`);
+    } catch (err: unknown) {
+      setMessage(`Error: ${errMessage(err)}`);
     } finally {
       setLoading(false);
     }

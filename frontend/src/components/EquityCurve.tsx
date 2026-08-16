@@ -39,7 +39,9 @@ export default function EquityCurve({ data }: Props) {
           <Tooltip
             contentStyle={{ background: "#0f172a", border: "1px solid #334155" }}
             labelStyle={{ color: "#e2e8f0" }}
-            formatter={(value: number) => [`$${value.toLocaleString()}`, "Equity"]}
+            formatter={(value) =>
+              [`$${Number(value).toLocaleString()}`, "Equity"] as [string, string]
+            }
           />
           <Line
             type="monotone"
