@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { StrategyInfo } from "../types";
 import { listStrategies } from "../api/client";
+import { POSITIVE, NEGATIVE } from "../theme";
 
 const STRATEGY_DETAILS: Record<string, {
   how_it_works: string;
@@ -504,7 +505,7 @@ const STRATEGY_DETAILS: Record<string, {
 
 const CATEGORIES: { name: string; label: string; color: string; strategies: string[] }[] = [
   { name: "benchmark", label: "벤치마크", color: "#94a3b8", strategies: ["buy_and_hold"] },
-  { name: "long_trend", label: "장기 추세", color: "#22c55e", strategies: ["golden_cross"] },
+  { name: "long_trend", label: "장기 추세", color: POSITIVE, strategies: ["golden_cross"] },
   { name: "mid_trend", label: "중기 추세", color: "#3b82f6", strategies: ["ma_crossover", "macd", "dual_ma_rsi"] },
   { name: "short_trend", label: "단기 추세", color: "#06b6d4", strategies: ["ema_crossover", "momentum_roc", "adx_trend", "parabolic_sar", "keltner"] },
   { name: "mid_breakout", label: "중단기 돌파", color: "#f59e0b", strategies: ["breakout"] },
@@ -613,16 +614,16 @@ export default function Strategies() {
 
           {/* Buy / Sell Rules */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            <div style={{ ...sectionStyle, borderLeft: "3px solid #22c55e" }}>
-              <h4 style={{ color: "#22c55e", fontSize: 14, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
+            <div style={{ ...sectionStyle, borderLeft: `3px solid ` }}>
+              <h4 style={{ color: POSITIVE, fontSize: 14, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
                 매수 조건
               </h4>
               <pre style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
                 {details.buy_rule}
               </pre>
             </div>
-            <div style={{ ...sectionStyle, borderLeft: "3px solid #ef4444" }}>
-              <h4 style={{ color: "#ef4444", fontSize: 14, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
+            <div style={{ ...sectionStyle, borderLeft: `3px solid ` }}>
+              <h4 style={{ color: NEGATIVE, fontSize: 14, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
                 매도 조건
               </h4>
               <pre style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
@@ -655,7 +656,7 @@ export default function Strategies() {
                   </div>
                   <div style={{ color: "#94a3b8", fontSize: 13 }}>
                     타입: <span style={{ color: "#3b82f6" }}>{p.type}</span>
-                    {" · "}기본값: <span style={{ color: "#22c55e" }}>{p.default}</span>
+                    {" · "}기본값: <span style={{ color: POSITIVE }}>{p.default}</span>
                     {" · "}범위: <span style={{ color: "#f59e0b" }}>{p.min}~{p.max}</span>
                   </div>
                 </div>
@@ -666,7 +667,7 @@ export default function Strategies() {
           {/* Strengths / Weaknesses */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
             <div style={sectionStyle}>
-              <h4 style={{ color: "#22c55e", fontSize: 14, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
+              <h4 style={{ color: POSITIVE, fontSize: 14, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
                 장점
               </h4>
               <ul style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 2, paddingLeft: 20 }}>
@@ -676,7 +677,7 @@ export default function Strategies() {
               </ul>
             </div>
             <div style={sectionStyle}>
-              <h4 style={{ color: "#ef4444", fontSize: 14, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
+              <h4 style={{ color: NEGATIVE, fontSize: 14, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
                 단점
               </h4>
               <ul style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 2, paddingLeft: 20 }}>

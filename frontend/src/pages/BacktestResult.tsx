@@ -7,6 +7,7 @@ import MetricsPanel from "../components/MetricsPanel";
 import EquityCurve from "../components/EquityCurve";
 import CandlestickChart from "../components/CandlestickChart";
 import TradeLog from "../components/TradeLog";
+import { NEGATIVE } from "../theme";
 
 export default function BacktestResult() {
   const { id } = useParams<{ id: string }>();
@@ -58,11 +59,11 @@ export default function BacktestResult() {
   }
 
   if (error) {
-    return <p style={{ color: "#ef4444", padding: 40 }}>{error}</p>;
+    return <p style={{ color: NEGATIVE, padding: 40 }}>{error}</p>;
   }
 
   if (!result) {
-    return <p style={{ color: "#ef4444", padding: 40 }}>Backtest not found.</p>;
+    return <p style={{ color: NEGATIVE, padding: 40 }}>Backtest not found.</p>;
   }
 
   return (

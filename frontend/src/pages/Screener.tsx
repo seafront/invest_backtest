@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { FullScreenResponse } from "../types";
 import { fullScreening } from "../api/client";
 import { errMessage } from "../utils/error";
+import { POSITIVE, NEGATIVE, CAUTION } from "../theme";
 
 export default function Screener() {
   const [startDate, setStartDate] = useState("2022-01-01");
@@ -187,11 +188,11 @@ export default function Screener() {
                         </td>
                         <td style={{ color: "#3b82f6", padding: "8px 10px", fontWeight: 600 }}>{r.ticker}</td>
                         <td style={{ color: "#e2e8f0", padding: "8px 10px" }}>{r.strategy_display}</td>
-                        <td style={{ color: r.total_return >= 0 ? "#22c55e" : "#ef4444", padding: "8px 10px", fontWeight: 600 }}>
+                        <td style={{ color: r.total_return >= 0 ? POSITIVE : NEGATIVE, padding: "8px 10px", fontWeight: 600 }}>
                           {r.total_return.toFixed(2)}%
                         </td>
                         <td style={{ color: "#e2e8f0", padding: "8px 10px" }}>{r.sharpe_ratio.toFixed(2)}</td>
-                        <td style={{ color: "#eab308", padding: "8px 10px" }}>{r.max_drawdown.toFixed(2)}%</td>
+                        <td style={{ color: CAUTION, padding: "8px 10px" }}>{r.max_drawdown.toFixed(2)}%</td>
                         <td style={{ color: "#e2e8f0", padding: "8px 10px" }}>{r.win_rate.toFixed(1)}%</td>
                         <td style={{ color: "#94a3b8", padding: "8px 10px" }}>{r.trades_count}</td>
                       </tr>
@@ -226,7 +227,7 @@ export default function Screener() {
                       <span style={{ color: "#8b5cf6", fontSize: 12, fontWeight: 600 }}>PICK #{idx + 1}</span>
                       <div style={{ color: "#e2e8f0", fontSize: 28, fontWeight: 700 }}>{pick.ticker}</div>
                     </div>
-                    <div style={{ color: pick.total_return >= 0 ? "#22c55e" : "#ef4444", fontSize: 24, fontWeight: 700 }}>
+                    <div style={{ color: pick.total_return >= 0 ? POSITIVE : NEGATIVE, fontSize: 24, fontWeight: 700 }}>
                       {pick.total_return >= 0 ? "+" : ""}{pick.total_return.toFixed(2)}%
                     </div>
                   </div>
@@ -242,7 +243,7 @@ export default function Screener() {
                     </div>
                     <div>
                       <div style={{ color: "#64748b", fontSize: 12 }}>Max Drawdown</div>
-                      <div style={{ color: "#eab308", fontSize: 14 }}>{pick.max_drawdown.toFixed(2)}%</div>
+                      <div style={{ color: CAUTION, fontSize: 14 }}>{pick.max_drawdown.toFixed(2)}%</div>
                     </div>
                     <div>
                       <div style={{ color: "#64748b", fontSize: 12 }}>Win Rate</div>

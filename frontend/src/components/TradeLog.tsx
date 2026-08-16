@@ -1,4 +1,5 @@
 import type { TradeResult } from "../types";
+import { POSITIVE, NEGATIVE } from "../theme";
 
 interface Props {
   trades: TradeResult[];
@@ -50,7 +51,7 @@ export default function TradeLog({ trades }: Props) {
                 <td style={{ color: "#e2e8f0", padding: "8px 12px" }}>{t.date}</td>
                 <td
                   style={{
-                    color: t.action === "BUY" ? "#22c55e" : "#ef4444",
+                    color: t.action === "BUY" ? POSITIVE : NEGATIVE,
                     padding: "8px 12px",
                     fontWeight: 600,
                   }}
@@ -66,8 +67,8 @@ export default function TradeLog({ trades }: Props) {
                     color:
                       t.action === "SELL"
                         ? t.pnl >= 0
-                          ? "#22c55e"
-                          : "#ef4444"
+                          ? POSITIVE
+                          : NEGATIVE
                         : "#64748b",
                     padding: "8px 12px",
                   }}
@@ -79,8 +80,8 @@ export default function TradeLog({ trades }: Props) {
                     color:
                       t.cumPnl !== null
                         ? t.cumPnl >= 0
-                          ? "#22c55e"
-                          : "#ef4444"
+                          ? POSITIVE
+                          : NEGATIVE
                         : "#64748b",
                     padding: "8px 12px",
                     fontWeight: t.cumPnl !== null ? 600 : 400,

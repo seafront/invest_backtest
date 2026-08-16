@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { createChart, type IChartApi, ColorType } from "lightweight-charts";
 import type { StockData, TradeResult, IndicatorPoint } from "../types";
+import { POSITIVE, NEGATIVE, SERIES_COLORS } from "../theme";
 
 interface Props {
   data: StockData[];
@@ -8,7 +9,7 @@ interface Props {
   indicators?: Record<string, IndicatorPoint[]> | null;
 }
 
-const COLORS = ["#f59e0b", "#8b5cf6", "#06b6d4", "#ec4899", "#10b981"];
+const COLORS = SERIES_COLORS;
 
 export default function CandlestickChart({ data, trades, indicators }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -36,12 +37,12 @@ export default function CandlestickChart({ data, trades, indicators }: Props) {
     chartRef.current = chart;
 
     const candleSeries = chart.addCandlestickSeries({
-      upColor: "#22c55e",
-      downColor: "#ef4444",
-      borderUpColor: "#22c55e",
-      borderDownColor: "#ef4444",
-      wickUpColor: "#22c55e",
-      wickDownColor: "#ef4444",
+      upColor: POSITIVE,
+      downColor: NEGATIVE,
+      borderUpColor: POSITIVE,
+      borderDownColor: NEGATIVE,
+      wickUpColor: POSITIVE,
+      wickDownColor: NEGATIVE,
     });
 
     candleSeries.setData(
@@ -73,7 +74,7 @@ export default function CandlestickChart({ data, trades, indicators }: Props) {
       const markers = trades.map((t) => ({
         time: t.date,
         position: t.action === "BUY" ? "belowBar" as const : "aboveBar" as const,
-        color: t.action === "BUY" ? "#22c55e" : "#ef4444",
+        color: t.action === "BUY" ? POSITIVE : NEGATIVE,
         shape: t.action === "BUY" ? "arrowUp" as const : "arrowDown" as const,
         text: `${t.action} ${t.shares}`,
       }));

@@ -1,3 +1,5 @@
+import { POSITIVE, NEGATIVE, CAUTION } from "../theme";
+
 interface Props {
   totalReturn: number;
   cagr?: number;
@@ -27,12 +29,12 @@ export default function MetricsPanel({
     {
       label: "Total Return",
       value: `${totalReturn.toFixed(2)}%`,
-      color: totalReturn >= 0 ? "#22c55e" : "#ef4444",
+      color: totalReturn >= 0 ? POSITIVE : NEGATIVE,
     },
     {
       label: "CAGR",
       value: `${(cagr ?? 0).toFixed(2)}%`,
-      color: (cagr ?? 0) >= 10 ? "#22c55e" : (cagr ?? 0) >= 0 ? "#eab308" : "#ef4444",
+      color: (cagr ?? 0) >= 10 ? POSITIVE : (cagr ?? 0) >= 0 ? CAUTION : NEGATIVE,
     },
     ...(isDCA
       ? [
@@ -46,22 +48,22 @@ export default function MetricsPanel({
     {
       label: "Final Value",
       value: `$${finalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      color: totalReturn >= 0 ? "#22c55e" : "#ef4444",
+      color: totalReturn >= 0 ? POSITIVE : NEGATIVE,
     },
     {
       label: "Sharpe Ratio",
       value: sharpeRatio.toFixed(4),
-      color: sharpeRatio >= 1 ? "#22c55e" : sharpeRatio >= 0 ? "#eab308" : "#ef4444",
+      color: sharpeRatio >= 1 ? POSITIVE : sharpeRatio >= 0 ? CAUTION : NEGATIVE,
     },
     {
       label: "Max Drawdown",
       value: `${maxDrawdown.toFixed(2)}%`,
-      color: maxDrawdown <= 10 ? "#22c55e" : maxDrawdown <= 20 ? "#eab308" : "#ef4444",
+      color: maxDrawdown <= 10 ? POSITIVE : maxDrawdown <= 20 ? CAUTION : NEGATIVE,
     },
     {
       label: "Win Rate",
       value: `${winRate.toFixed(1)}%`,
-      color: winRate >= 50 ? "#22c55e" : "#eab308",
+      color: winRate >= 50 ? POSITIVE : CAUTION,
     },
   ];
 
