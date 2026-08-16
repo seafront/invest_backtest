@@ -103,7 +103,12 @@ def run_backtest(
 
     final_equity = equity_values[-1] if equity_values else total_invested
     ret = (final_equity - total_invested) / total_invested * 100 if total_invested > 0 else 0.0
-    days = len(equity_values)
+
+    # Calendar span, not trading-day count — cagr() divides by 365.25
+    if len(df) >= 2:
+        days = (pd.to_datetime(df["date"].iloc[-1]) - pd.to_datetime(df["date"].iloc[0])).days
+    else:
+        days = 0
 
     return {
         "total_return": round(ret, 2),
