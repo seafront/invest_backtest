@@ -1,19 +1,54 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import type { BacktestSummary } from "../types";
-import { listBacktests, deleteBacktest } from "../api/client";
+import { listBacktests, deleteBacktest, listTickers } from "../api/client";
+import { POSITIVE, NEGATIVE, CAUTION } from "../theme";
+
+/** 요약 타일. label 아래 큰 값, 그 아래 어떤 백테스트인지 밝히는 보조 문구. */
+function Tile({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div style={{ background: "#1e1e2e", borderRadius: 8, padding: "16px 24px", minWidth: 150, flex: 1 }}>
+      <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 4 }}>{label}</div>
+      <div style={{ color: color ?? "#e2e8f0", fontSize: 22, fontWeight: 700 }}>{value}</div>
+      {sub && <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+const describe = (b: BacktestSummary) => `${b.ticker} · ${b.strategy_name.replace(/_/g, " ")}`;
 
 export default function Dashboard() {
   const [backtests, setBacktests] = useState<BacktestSummary[]>([]);
+  const [tickerCount, setTickerCount] = useState<number | null>(null);
   const navigate = useNavigate();
 
   const load = () => {
     listBacktests().then((r) => setBacktests(r.data));
+    listTickers().then((r) => setTickerCount(r.data.length));
   };
 
   useEffect(() => {
     load();
   }, []);
+
+  // 최고 CAGR과 최대 낙폭을 나란히 둬 수익과 위험을 함께 보여준다. null인 옛 레코드는 제외.
+  const summary = useMemo(() => {
+    const pick = (
+      key: "cagr" | "max_drawdown",
+      better: (a: number, b: number) => boolean
+    ): BacktestSummary | null =>
+      backtests
+        .filter((b) => b[key] !== null)
+        .reduce<BacktestSummary | null>(
+          (best, b) => (best === null || better(b[key] as number, best[key] as number) ? b : best),
+          null
+        );
+
+    return {
+      bestCagr: pick("cagr", (a, c) => a > c),
+      worstDd: pick("max_drawdown", (a, c) => a > c),
+    };
+  }, [backtests]);
 
   const handleDelete = async (id: number) => {
     try {
@@ -45,11 +80,35 @@ export default function Dashboard() {
         </button>
       </div>
 
+      {backtests.length > 0 && (
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+          <Tile label="백테스트" value={`${backtests.length}회`} sub="최근 50건까지 표시" />
+          <Tile
+            label="최고 CAGR"
+            value={summary.bestCagr ? `${summary.bestCagr.cagr!.toFixed(2)}%` : "—"}
+            sub={summary.bestCagr ? describe(summary.bestCagr) : undefined}
+            color={POSITIVE}
+          />
+          <Tile
+            label="최대 낙폭"
+            value={summary.worstDd ? `-${summary.worstDd.max_drawdown!.toFixed(2)}%` : "—"}
+            sub={summary.worstDd ? describe(summary.worstDd) : undefined}
+            color={NEGATIVE}
+          />
+          <Tile
+            label="캐시 종목"
+            value={tickerCount === null ? "—" : `${tickerCount}개`}
+            sub="Data 탭에서 관리"
+          />
+        </div>
+      )}
+
       {backtests.length === 0 ? (
         <div style={{ background: "#1e1e2e", borderRadius: 8, padding: 40, textAlign: "center" }}>
           <p style={{ color: "#64748b", fontSize: 16 }}>No backtests yet.</p>
           <p style={{ color: "#475569", fontSize: 14, marginTop: 8 }}>
-            Fetch stock data first, then run your first backtest.
+            {tickerCount ? `${tickerCount}개 종목이 캐시돼 있습니다. 첫 백테스트를 실행해 보세요.`
+                         : "Fetch stock data first, then run your first backtest."}
           </p>
         </div>
       ) : (
@@ -111,7 +170,7 @@ export default function Dashboard() {
                   </td>
                   <td
                     style={{
-                      color: (b.total_return ?? 0) >= 0 ? "#22c55e" : "#ef4444",
+                      color: (b.total_return ?? 0) >= 0 ? POSITIVE : NEGATIVE,
                       padding: "8px 10px",
                       fontWeight: 600,
                     }}
@@ -120,7 +179,7 @@ export default function Dashboard() {
                   </td>
                   <td
                     style={{
-                      color: (b.cagr ?? 0) >= 0 ? "#22c55e" : "#ef4444",
+                      color: (b.cagr ?? 0) >= 0 ? POSITIVE : NEGATIVE,
                       padding: "8px 10px",
                     }}
                   >
@@ -129,7 +188,7 @@ export default function Dashboard() {
                   <td style={{ color: "#e2e8f0", padding: "8px 10px" }}>
                     {b.sharpe_ratio?.toFixed(2)}
                   </td>
-                  <td style={{ color: "#eab308", padding: "8px 10px" }}>
+                  <td style={{ color: CAUTION, padding: "8px 10px" }}>
                     {b.max_drawdown?.toFixed(2)}%
                   </td>
                   <td style={{ color: "#e2e8f0", padding: "8px 10px" }}>
