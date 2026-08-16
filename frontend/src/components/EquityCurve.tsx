@@ -49,6 +49,7 @@ export default function EquityCurve({ data }: Props) {
             stroke="#3b82f6"
             dot={false}
             strokeWidth={2}
+            isAnimationActive={false}
           />
         </LineChart>
       </ResponsiveContainer>

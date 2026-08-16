@@ -17,11 +17,12 @@ import CandlestickChart from "../components/CandlestickChart";
 import { getStockData, getStockStats } from "../api/client";
 import { errMessage } from "../utils/error";
 import type { StockData, StockStats, YearlyReturn } from "../types";
+import { POSITIVE, NEGATIVE } from "../theme";
 
 // 상승/하락 대비색. CVD 검증 통과 조합 (deutan ΔE 8.1). 부호는 색 외에
 // 0선 기준 막대 방향으로도 인코딩되므로 색만으로 구분하지 않는다.
-const UP = "#10b981";
-const DOWN = "#ef4444";
+const UP = POSITIVE;
+const DOWN = NEGATIVE;
 const MUTED = "#94a3b8";
 const INK = "#e2e8f0";
 const SURFACE = "#1e1e2e";
@@ -148,7 +149,8 @@ export default function StockDetail() {
               {...tooltipStyle}
               formatter={(v) => [`${Number(v).toFixed(2)}%`, "Drawdown"] as [string, string]}
             />
-            <Area type="monotone" dataKey="drawdown" stroke={DOWN} strokeWidth={2} fill="url(#ddFill)" dot={false} />
+            <Area type="monotone"
+              isAnimationActive={false} dataKey="drawdown" stroke={DOWN} strokeWidth={2} fill="url(#ddFill)" dot={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -179,7 +181,7 @@ export default function StockDetail() {
               }}
             />
             <ReferenceLine y={0} stroke={MUTED} strokeWidth={1} />
-            <Bar dataKey="return_pct" radius={[4, 4, 0, 0]}>
+            <Bar dataKey="return_pct" isAnimationActive={false} radius={[4, 4, 0, 0]}>
               {stats.yearly_returns.map((y) => (
                 <Cell
                   key={y.year}
