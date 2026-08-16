@@ -29,7 +29,9 @@ export default function CandlestickChart({ data, trades, indicators }: Props) {
         horzLines: { color: "#1e293b" },
       },
       crosshair: { mode: 0 },
-      timeScale: { borderColor: "#334155" },
+      // minBarSpacing 기본값(0.5)이면 수천 봉을 컨테이너 폭에 압축하지 못해
+      // fitContent()를 호출해도 최근 구간만 보인다. 장기 시계열을 위해 낮춘다.
+      timeScale: { borderColor: "#334155", minBarSpacing: 0.02 },
     });
     chartRef.current = chart;
 

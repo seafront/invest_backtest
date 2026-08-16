@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import type { TickerInfo } from "../types";
 import { fetchStockData, listTickers } from "../api/client";
 
@@ -147,8 +148,13 @@ export default function DataManager() {
             <tbody>
               {tickers.map((t) => (
                 <tr key={t.ticker} style={{ borderBottom: "1px solid #1e293b" }}>
-                  <td style={{ color: "#3b82f6", padding: "8px 12px", fontWeight: 600 }}>
-                    {t.ticker}
+                  <td style={{ padding: "8px 12px", fontWeight: 600 }}>
+                    <Link
+                      to={`/data/${encodeURIComponent(t.ticker)}`}
+                      style={{ color: "#3b82f6", textDecoration: "none" }}
+                    >
+                      {t.ticker} →
+                    </Link>
                   </td>
                   <td style={{ color: "#e2e8f0", padding: "8px 12px" }}>{t.start_date}</td>
                   <td style={{ color: "#e2e8f0", padding: "8px 12px" }}>{t.end_date}</td>

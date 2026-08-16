@@ -2,6 +2,7 @@ import axios from "axios";
 import type {
   TickerInfo,
   StockData,
+  StockStats,
   StrategyInfo,
   BacktestRequest,
   BacktestResult,
@@ -22,7 +23,10 @@ export const fetchStockData = (
 ) => api.post<StockData[]>("/stocks/fetch", { ticker, start_date, end_date });
 
 export const getStockData = (ticker: string) =>
-  api.get<StockData[]>(`/stocks/${ticker}`);
+  api.get<StockData[]>(`/stocks/${encodeURIComponent(ticker)}`);
+
+export const getStockStats = (ticker: string) =>
+  api.get<StockStats>(`/stocks/${encodeURIComponent(ticker)}/stats`);
 
 export const listTickers = () => api.get<TickerInfo[]>("/stocks/");
 

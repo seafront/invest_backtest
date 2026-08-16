@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from schemas import StockFetchRequest, StockData, TickerInfo
+from schemas import StockFetchRequest, StockData, StockStats, TickerInfo
 from services.data_fetcher import fetch_and_cache, get_cached_data, list_cached_tickers
+from services.market_stats import compute_stats
 
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
 
@@ -24,6 +25,19 @@ def get_stock_data(ticker: str, db: Session = Depends(get_db)):
         return df.to_dict(orient="records")
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/{ticker}/stats", response_model=StockStats)
+def get_stock_stats(ticker: str, db: Session = Depends(get_db)):
+    """전략과 무관한 시장 통계 — 낙폭 곡선, 연도별 수익률, 약세장 이벤트."""
+    try:
+        df = get_cached_data(db, ticker, None, None)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    try:
+        return compute_stats(df, ticker)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/", response_model=list[TickerInfo])

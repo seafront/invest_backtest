@@ -28,6 +28,57 @@ class TickerInfo(BaseModel):
     count: int
 
 
+class DrawdownPoint(BaseModel):
+    date: date
+    drawdown: float
+
+
+class YearlyReturn(BaseModel):
+    year: int
+    return_pct: float
+    partial: bool = False
+
+
+class BearMarket(BaseModel):
+    peak_date: date
+    trough_date: date
+    recovery_date: date | None
+    peak_close: float
+    trough_close: float
+    decline_pct: float
+    decline_days: int
+    recovery_days: int | None
+    return_3m: float | None
+    return_6m: float | None
+    return_12m: float | None
+
+
+class DayChange(BaseModel):
+    date: date
+    change: float
+
+
+class StockStats(BaseModel):
+    ticker: str
+    start_date: date
+    end_date: date
+    trading_days: int
+    years: float
+    first_close: float
+    last_close: float
+    total_return: float
+    cagr: float
+    annual_volatility: float
+    max_drawdown: float
+    sharpe_ratio: float
+    best_day: DayChange
+    worst_day: DayChange
+    positive_day_pct: float
+    drawdown_curve: list[DrawdownPoint]
+    yearly_returns: list[YearlyReturn]
+    bear_markets: list[BearMarket]
+
+
 # --- Strategy ---
 class ParamSchema(BaseModel):
     name: str

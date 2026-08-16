@@ -14,6 +14,57 @@ export interface TickerInfo {
   count: number;
 }
 
+export interface DrawdownPoint {
+  date: string;
+  drawdown: number;
+}
+
+export interface YearlyReturn {
+  year: number;
+  return_pct: number;
+  partial: boolean;
+}
+
+export interface BearMarket {
+  peak_date: string;
+  trough_date: string;
+  recovery_date: string | null;
+  peak_close: number;
+  trough_close: number;
+  decline_pct: number;
+  decline_days: number;
+  recovery_days: number | null;
+  return_3m: number | null;
+  return_6m: number | null;
+  return_12m: number | null;
+}
+
+export interface DayChange {
+  date: string;
+  change: number;
+}
+
+export interface StockStats {
+  ticker: string;
+  start_date: string;
+  end_date: string;
+  trading_days: number;
+  years: number;
+  first_close: number;
+  last_close: number;
+  total_return: number;
+  cagr: number;
+  annual_volatility: number;
+  max_drawdown: number;
+  sharpe_ratio: number;
+  best_day: DayChange;
+  worst_day: DayChange;
+  positive_day_pct: number;
+  drawdown_curve: DrawdownPoint[];
+  yearly_returns: YearlyReturn[];
+  bear_markets: BearMarket[];
+}
+
 export interface ParamSchema {
   name: string;
   type: string;

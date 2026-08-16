@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import DataManager from "./pages/DataManager";
+import StockDetail from "./pages/StockDetail";
 import BacktestRun from "./pages/BacktestRun";
 import BacktestResult from "./pages/BacktestResult";
 import Screener from "./pages/Screener";
@@ -63,6 +64,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/data" element={<DataManager />} />
+              <Route path="/data/:ticker" element={<StockDetail />} />
               <Route path="/backtest" element={<BacktestRun />} />
               <Route path="/results/:id" element={<BacktestResult />} />
               <Route path="/strategies" element={<Strategies />} />
