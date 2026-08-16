@@ -13,6 +13,7 @@ Yahoo Finance에서 과거 시세를 받아 SQLite에 캐싱하고, 15가지 내
 - **투자 모드** — 거치식(`lump_sum`)과 적립식(`dca`, 월 정액 매수) 지원
 - **성과 지표** — 총 수익률, CAGR, Sharpe 비율, 최대 낙폭(MDD), 승률
 - **시각화** — 자산 곡선(Recharts), 캔들차트 + 지표 오버레이 + 매매 마커(lightweight-charts), 거래 로그
+- **종목 분석** — 전략 없이 데이터 자체를 보는 화면. 낙폭 곡선, 연도별 수익률, 약세장(고점 대비 -20% 이상) 이벤트와 저점 이후 3·6·12개월 반등률
 - **전략 탐색기** — 사용 가능한 전략과 파라미터 스키마 조회
 - **스크리너** — 시가총액 상위 종목 필터링 → 전체 전략 백테스트 → 수익률 상위 종목 추천 (2단계)
 
@@ -65,9 +66,10 @@ npm run dev
 ## 사용 순서
 
 1. **Data** 탭 → 종목(예: `AAPL`)과 기간 입력 → **Fetch Data**
-2. **Backtest** 탭 → 종목·전략·파라미터·기간·자본금(또는 적립식 월납입액) 설정 → **Run Backtest**
-3. 결과 페이지에서 지표·차트·거래 내역 확인 (기록은 **Dashboard**에 저장됨)
-4. (선택) **Screener** 탭에서 시총 상위 종목을 전략별로 자동 백테스트해 상위 종목 추천
+2. (선택) 캐시 목록에서 **티커를 클릭**하면 종목 분석 화면으로 이동 — 전략을 고르지 않고 낙폭·연도별 수익률·약세장 이력만 확인
+3. **Backtest** 탭 → 종목·전략·파라미터·기간·자본금(또는 적립식 월납입액) 설정 → **Run Backtest**
+4. 결과 페이지에서 지표·차트·거래 내역 확인 (기록은 **Dashboard**에 저장됨)
+5. (선택) **Screener** 탭에서 시총 상위 종목을 전략별로 자동 백테스트해 상위 종목 추천
 
 > Backtest 실행 시 캐시에 데이터가 없으면 자동으로 yfinance에서 받아옵니다.
 
@@ -101,6 +103,7 @@ invest_backtest/
 │   ├── services/strategies/   전략 15종 + 레지스트리
 │   └── requirements.txt
 ├── frontend/           React + Vite SPA (src/pages, src/components, src/api)
+├── doc/                투자서 분석 노트와 재현 가능한 검증 스크립트
 ├── start.sh            백엔드·프론트엔드 동시 실행 스크립트
 ├── ARCHITECTURE.md     상세 설계 문서 (ERD, API, 데이터 흐름)
 ├── CLAUDE.md           AI 에이전트 작업 가이드
@@ -115,6 +118,7 @@ Base URL: `http://localhost:8000/api`
 |--------|------|------|
 | POST | `/stocks/fetch` | yfinance에서 시세 다운로드 및 캐싱 |
 | GET | `/stocks/{ticker}` | 캐시된 OHLCV 조회 |
+| GET | `/stocks/{ticker}/stats` | 종목 분석 (낙폭 곡선, 연도별 수익률, 약세장 이벤트) |
 | GET | `/stocks/` | 캐시된 종목 목록 |
 | GET | `/strategies/` | 전략 목록 및 파라미터 스키마 |
 | POST | `/backtests/run` | 백테스트 실행 및 저장 |
@@ -130,3 +134,4 @@ Base URL: `http://localhost:8000/api`
 
 - 설계 상세 (ERD, 데이터 흐름, 설계 결정 근거): [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 - 새 전략 추가 방법 및 개발 규칙: [`CLAUDE.md`](./CLAUDE.md)
+- 이 엔진으로 검증한 투자서 주장과 실측 통계: [`doc/book/markets-never-forget/`](./doc/book/markets-never-forget/)
