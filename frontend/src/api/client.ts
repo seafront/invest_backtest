@@ -3,6 +3,9 @@ import type {
   TickerInfo,
   StockData,
   StockStats,
+  MacroCatalogItem,
+  MacroSeriesInfo,
+  MacroSeriesDetail,
   StrategyInfo,
   BacktestRequest,
   BacktestResult,
@@ -29,6 +32,18 @@ export const getStockStats = (ticker: string) =>
   api.get<StockStats>(`/stocks/${encodeURIComponent(ticker)}/stats`);
 
 export const listTickers = () => api.get<TickerInfo[]>("/stocks/");
+
+// Macro (FRED)
+export const listMacroCatalog = () =>
+  api.get<MacroCatalogItem[]>("/macro/catalog");
+
+export const fetchMacroSeries = (series_id: string) =>
+  api.post<MacroSeriesInfo>("/macro/fetch", { series_id });
+
+export const listMacroSeries = () => api.get<MacroSeriesInfo[]>("/macro/");
+
+export const getMacroSeries = (series_id: string) =>
+  api.get<MacroSeriesDetail>(`/macro/${encodeURIComponent(series_id)}`);
 
 // Strategies
 export const listStrategies = () => api.get<StrategyInfo[]>("/strategies/");

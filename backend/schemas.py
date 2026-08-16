@@ -79,6 +79,43 @@ class StockStats(BaseModel):
     bear_markets: list[BearMarket]
 
 
+# --- Macro ---
+class MacroCatalogItem(BaseModel):
+    series_id: str
+    name: str
+    unit: str
+    frequency: str
+    description: str = ""
+
+
+class MacroFetchRequest(BaseModel):
+    series_id: str
+
+
+class MacroSeriesInfo(BaseModel):
+    series_id: str
+    name: str
+    unit: str
+    frequency: str
+    source: str
+    start_date: date
+    end_date: date
+    count: int
+
+
+class MacroPoint(BaseModel):
+    date: date
+    value: float
+
+
+class MacroSeriesDetail(MacroSeriesInfo):
+    description: str = ""
+    latest_value: float
+    min_value: float
+    max_value: float
+    data: list[MacroPoint]
+
+
 # --- Strategy ---
 class ParamSchema(BaseModel):
     name: str

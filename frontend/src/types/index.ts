@@ -14,6 +14,38 @@ export interface TickerInfo {
   count: number;
 }
 
+export interface MacroCatalogItem {
+  series_id: string;
+  name: string;
+  unit: string;
+  frequency: string;
+  description: string;
+}
+
+export interface MacroSeriesInfo {
+  series_id: string;
+  name: string;
+  unit: string;
+  frequency: string;
+  source: string;
+  start_date: string;
+  end_date: string;
+  count: number;
+}
+
+export interface MacroPoint {
+  date: string;
+  value: number;
+}
+
+export interface MacroSeriesDetail extends MacroSeriesInfo {
+  description: string;
+  latest_value: number;
+  min_value: number;
+  max_value: number;
+  data: MacroPoint[];
+}
+
 export interface DrawdownPoint {
   date: string;
   drawdown: number;

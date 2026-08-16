@@ -2,7 +2,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routers import stocks, strategies, backtests, screening
+from routers import stocks, strategies, backtests, screening, macro
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,6 +27,7 @@ app.include_router(stocks.router)
 app.include_router(strategies.router)
 app.include_router(backtests.router)
 app.include_router(screening.router)
+app.include_router(macro.router)
 
 
 @app.get("/")

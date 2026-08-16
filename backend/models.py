@@ -19,6 +19,38 @@ class Stock(Base):
     __table_args__ = (UniqueConstraint("ticker", "date", name="uq_ticker_date"),)
 
 
+class MacroSeries(Base):
+    """거시 지표의 메타데이터. 값은 macro_data에 따로 쌓는다.
+
+    주가와 형태가 달라 stocks 테이블을 쓸 수 없다 — 값이 하나뿐이고,
+    주기가 일·주·월·분기로 섞이며, 월간 시계열은 매월 1일로 스탬프된다.
+    """
+    __tablename__ = "macro_series"
+
+    id = Column(Integer, primary_key=True, index=True)
+    series_id = Column(String, unique=True, index=True, nullable=False)  # 예: UNRATE
+    name = Column(String, nullable=False)
+    unit = Column(String, default="")
+    frequency = Column(String, default="")  # daily / weekly / monthly / quarterly
+    source = Column(String, default="FRED")
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    points = relationship("MacroData", back_populates="series", cascade="all, delete-orphan")
+
+
+class MacroData(Base):
+    __tablename__ = "macro_data"
+
+    id = Column(Integer, primary_key=True, index=True)
+    series_id = Column(String, ForeignKey("macro_series.series_id"), index=True, nullable=False)
+    date = Column(Date, nullable=False)
+    value = Column(Float, nullable=False)
+
+    series = relationship("MacroSeries", back_populates="points")
+
+    __table_args__ = (UniqueConstraint("series_id", "date", name="uq_series_date"),)
+
+
 class Backtest(Base):
     __tablename__ = "backtests"
 
