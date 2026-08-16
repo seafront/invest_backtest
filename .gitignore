@@ -12,6 +12,10 @@ frontend/dist/
 # Build cache
 backend/.vite/
 
+# Generated analysis data (regenerate with analysis/fetch_data.py)
+doc/**/analysis/data/
+doc/**/__pycache__/
+
 # IDE
 .vscode/
 .idea/
