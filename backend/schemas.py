@@ -26,6 +26,43 @@ class TickerInfo(BaseModel):
     start_date: date
     end_date: date
     count: int
+    name: str | None = None
+    universes: list[str] = []
+
+
+class RefreshRequest(BaseModel):
+    start_date: date
+    end_date: date
+
+
+class RefreshResult(BaseModel):
+    ticker: str
+    added: int
+    count: int
+    error: str | None = None
+
+
+class UniverseInfo(BaseModel):
+    key: str
+    label: str
+
+
+class BulkFetchRequest(BaseModel):
+    universe: str = "sp500"
+    start_date: date
+    end_date: date
+
+
+class BulkFetchStatus(BaseModel):
+    running: bool
+    universe: str
+    total: int
+    done: int
+    added: int
+    failed: list[str]
+    started_at: datetime | None
+    finished_at: datetime | None
+    error: str | None
 
 
 class DrawdownPoint(BaseModel):
@@ -77,6 +114,55 @@ class StockStats(BaseModel):
     drawdown_curve: list[DrawdownPoint]
     yearly_returns: list[YearlyReturn]
     bear_markets: list[BearMarket]
+
+
+class IndicatorSignal(BaseModel):
+    key: str
+    label: str
+    detail: str
+    level: str  # ok / watch / alert
+
+
+class IndicatorPoint(BaseModel):
+    date: date
+    close: float
+    disparity_5: float | None
+    disparity_20: float | None
+    disparity_60: float | None
+    turnover_ratio: float | None
+
+
+class StockIndicators(BaseModel):
+    """OHLCV에서 파생된 현재 상태 지표. 새로 받아오는 데이터는 없다."""
+    ticker: str
+    as_of: date
+    close: float
+    ma5: float | None
+    ma20: float | None
+    ma60: float | None
+    above_ma20_days: int
+    disparity_5: float | None
+    disparity_20: float | None
+    disparity_60: float | None
+    return_5d: float | None
+    return_20d: float | None
+    return_60d: float | None
+    turnover_avg5: float
+    turnover_avg20: float
+    turnover_avg60: float | None
+    turnover_ratio_5_60: float | None
+    high_52w: float
+    low_52w: float
+    from_high_pct: float | None
+    from_low_pct: float | None
+    is_52w_high: bool
+    volatility_20d: float | None
+    upper_wick_days_20: int
+    bullish_days_15: int
+    low_rising: bool | None
+    signals: list[IndicatorSignal]
+    series_range: str
+    series: list[IndicatorPoint]
 
 
 # --- Macro ---

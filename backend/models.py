@@ -19,6 +19,31 @@ class Stock(Base):
     __table_args__ = (UniqueConstraint("ticker", "date", name="uq_ticker_date"),)
 
 
+class Company(Base):
+    """티커 → 회사 이름. 지수 구성종목 표에서 얻은 이름을 담아 둔다.
+
+    yfinance의 .info로 받으면 종목당 약 0.9초가 걸려 522종목이면 8분이다.
+    구성종목 표에는 이름이 함께 들어 있으므로 추가 요청 없이 채운다.
+    """
+    __tablename__ = "companies"
+
+    ticker = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class IndexMember(Base):
+    """지수 편입 여부. 지수마다 한 행씩 — 한 종목이 여러 지수에 들어갈 수 있다."""
+    __tablename__ = "index_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    universe = Column(String, index=True, nullable=False)  # sp500 / nasdaq100
+    ticker = Column(String, index=True, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("universe", "ticker", name="uq_universe_ticker"),)
+
+
 class MacroSeries(Base):
     """거시 지표의 메타데이터. 값은 macro_data에 따로 쌓는다.
 

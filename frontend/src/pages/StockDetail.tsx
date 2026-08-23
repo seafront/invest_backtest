@@ -14,9 +14,12 @@ import {
   YAxis,
 } from "recharts";
 import CandlestickChart from "../components/CandlestickChart";
+import IndicatorPanel from "../components/IndicatorPanel";
+import MacroStack from "../components/MacroStack";
 import { getStockData, getStockStats } from "../api/client";
 import { errMessage } from "../utils/error";
 import type { StockData, StockStats, YearlyReturn } from "../types";
+import { downsample, ts, fmtMonth, evenTicks } from "../utils/chart";
 import { POSITIVE, NEGATIVE } from "../theme";
 
 // 상승/하락 대비색. CVD 검증 통과 조합 (deutan ΔE 8.1). 부호는 색 외에
@@ -39,11 +42,6 @@ const tooltipStyle = {
   contentStyle: { background: "#0f172a", border: `1px solid ${GRID}` },
   labelStyle: { color: INK },
 };
-
-function downsample<T>(rows: T[], target = 500): T[] {
-  const step = Math.max(1, Math.floor(rows.length / target));
-  return rows.filter((_, i) => i % step === 0 || i === rows.length - 1);
-}
 
 function Tile({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
@@ -96,8 +94,14 @@ export default function StockDetail() {
     );
   if (!stats) return null;
 
-  const ddData = downsample(stats.drawdown_curve);
   const sign = (v: number) => (v >= 0 ? UP : DOWN);
+
+  // 두 차트가 같은 시간 도메인을 공유해야 x축이 정확히 맞는다.
+  const tDomain: [number, number] = [ts(stats.start_date), ts(stats.end_date)];
+  const ddData = downsample(stats.drawdown_curve).map((d) => ({
+    t: ts(d.date),
+    drawdown: d.drawdown,
+  }));
 
   return (
     <div>
@@ -128,6 +132,9 @@ export default function StockDetail() {
       {/* 가격 — CandlestickChart가 자체 카드와 제목을 그리므로 감싸지 않는다 */}
       <CandlestickChart data={ohlcv} />
 
+      {/* 파생 지표 — OHLCV에서 계산, 저장하지 않는다. 구간 선택은 패널이 직접 관리한다 */}
+      <IndicatorPanel ticker={ticker} />
+
       {/* 낙폭 */}
       <div style={card}>
         <h3 style={{ color: INK, marginBottom: 4 }}>Drawdown — 전고점 대비 하락률</h3>
@@ -143,16 +150,39 @@ export default function StockDetail() {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
-            <XAxis dataKey="date" tick={{ fill: MUTED, fontSize: 11 }} tickFormatter={(v) => v.slice(0, 7)} minTickGap={40} />
-            <YAxis tick={{ fill: MUTED, fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+            <XAxis
+              dataKey="t"
+              type="number"
+              scale="time"
+              domain={tDomain}
+              ticks={evenTicks(tDomain)}
+              tick={{ fill: MUTED, fontSize: 11 }}
+              tickFormatter={fmtMonth}
+              minTickGap={20}
+            />
+            <YAxis width={56} tick={{ fill: MUTED, fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
             <Tooltip
               {...tooltipStyle}
+              labelFormatter={(t) => fmtMonth(Number(t))}
               formatter={(v) => [`${Number(v).toFixed(2)}%`, "Drawdown"] as [string, string]}
             />
             <Area type="monotone"
               isAnimationActive={false} dataKey="drawdown" stroke={DOWN} strokeWidth={2} fill="url(#ddFill)" dot={false} />
           </AreaChart>
         </ResponsiveContainer>
+
+        {/* 거시 지표 — 낙폭과 같은 x축을 쓰는 칸을 아래에 쌓는다.
+            한 축에 겹치지 않는 이유는 범위가 제각각이기 때문이다. 낙폭(0~-57%)과
+            실업률(2.5~14.8%)을 한 축에 두면 이중 축이 필요해지고, 이중 축은
+            두 계열의 교차점을 임의로 만들어 왜곡한다. */}
+        <div style={{ borderTop: `1px solid ${GRID}`, marginTop: 16, paddingTop: 16 }}>
+          <MacroStack
+            startDate={stats.start_date}
+            endDate={stats.end_date}
+            tDomain={tDomain}
+            fmtX={fmtMonth}
+          />
+        </div>
       </div>
 
       {/* 연도별 수익률 */}

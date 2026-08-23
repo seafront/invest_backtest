@@ -12,6 +12,8 @@ export interface TickerInfo {
   start_date: string;
   end_date: string;
   count: number;
+  name: string | null;
+  universes: string[];
 }
 
 export interface MacroCatalogItem {
@@ -44,6 +46,78 @@ export interface MacroSeriesDetail extends MacroSeriesInfo {
   min_value: number;
   max_value: number;
   data: MacroPoint[];
+}
+
+export interface RefreshResult {
+  ticker: string;
+  added: number;
+  count: number;
+  error: string | null;
+}
+
+export interface UniverseInfo {
+  key: string;
+  label: string;
+}
+
+export interface BulkFetchStatus {
+  running: boolean;
+  universe: string;
+  total: number;
+  done: number;
+  added: number;
+  failed: string[];
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+}
+
+export interface IndicatorSignal {
+  key: string;
+  label: string;
+  detail: string;
+  level: "ok" | "watch" | "alert";
+}
+
+export interface IndicatorPoint {
+  date: string;
+  close: number;
+  disparity_5: number | null;
+  disparity_20: number | null;
+  disparity_60: number | null;
+  turnover_ratio: number | null;
+}
+
+export interface StockIndicators {
+  ticker: string;
+  as_of: string;
+  close: number;
+  ma5: number | null;
+  ma20: number | null;
+  ma60: number | null;
+  above_ma20_days: number;
+  disparity_5: number | null;
+  disparity_20: number | null;
+  disparity_60: number | null;
+  return_5d: number | null;
+  return_20d: number | null;
+  return_60d: number | null;
+  turnover_avg5: number;
+  turnover_avg20: number;
+  turnover_avg60: number | null;
+  turnover_ratio_5_60: number | null;
+  high_52w: number;
+  low_52w: number;
+  from_high_pct: number | null;
+  from_low_pct: number | null;
+  is_52w_high: boolean;
+  volatility_20d: number | null;
+  upper_wick_days_20: number;
+  bullish_days_15: number;
+  low_rising: boolean | null;
+  signals: IndicatorSignal[];
+  series_range: string;
+  series: IndicatorPoint[];
 }
 
 export interface DrawdownPoint {

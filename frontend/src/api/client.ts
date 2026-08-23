@@ -3,6 +3,10 @@ import type {
   TickerInfo,
   StockData,
   StockStats,
+  StockIndicators,
+  RefreshResult,
+  BulkFetchStatus,
+  UniverseInfo,
   MacroCatalogItem,
   MacroSeriesInfo,
   MacroSeriesDetail,
@@ -30,6 +34,29 @@ export const getStockData = (ticker: string) =>
 
 export const getStockStats = (ticker: string) =>
   api.get<StockStats>(`/stocks/${encodeURIComponent(ticker)}/stats`);
+
+export const getStockIndicators = (ticker: string, range = "1y") =>
+  api.get<StockIndicators>(`/stocks/${encodeURIComponent(ticker)}/indicators`, {
+    params: { range },
+  });
+
+export const refreshCachedData = (start_date: string, end_date: string) =>
+  api.post<RefreshResult[]>("/stocks/refresh", { start_date, end_date });
+
+export const listUniverses = () => api.get<UniverseInfo[]>("/stocks/universes");
+
+/** 시세 없이 구성종목·회사 이름만 갱신한다. 값은 종목 수 또는 실패 사유 문자열. */
+export const syncUniverses = () =>
+  api.post<Record<string, number | string>>("/stocks/universes/sync");
+
+export const startBulkFetch = (
+  universe: string,
+  start_date: string,
+  end_date: string
+) => api.post<BulkFetchStatus>("/stocks/bulk-fetch", { universe, start_date, end_date });
+
+export const getBulkFetchStatus = () =>
+  api.get<BulkFetchStatus>("/stocks/bulk-fetch/status");
 
 export const listTickers = () => api.get<TickerInfo[]>("/stocks/");
 

@@ -5,3 +5,6 @@ yfinance>=1.2.0
 pandas==2.2.3
 numpy==2.1.1
 pydantic==2.9.2
+# universe.py — 지수 구성종목 페이지 파싱 (pandas.read_html이 lxml을 요구한다)
+requests==2.33.1
+lxml==6.1.2
