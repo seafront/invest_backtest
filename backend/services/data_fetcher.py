@@ -26,7 +26,7 @@ def fetch_and_cache(db: Session, ticker: str, start_date: date, end_date: date) 
     df.columns = [c.lower() for c in df.columns]
 
     insert_rows(db, ticker, df)
-    ensure_company_name(db, ticker)
+    ensure_company_meta(db, ticker)
     return df
 
 
@@ -110,27 +110,54 @@ def refresh_all(db: Session, start_date: date, end_date: date) -> list[dict]:
     return results
 
 
-def ensure_company_name(db: Session, ticker: str) -> str | None:
-    """이름이 아직 없는 티커만 yfinance로 한 번 조회해 채운다.
+# 야후는 GICS와 다른 섹터 이름을 쓴다. 그대로 두면 한 컬럼에 "Health Care"와
+# "Healthcare"가 함께 남아 필터가 둘로 갈린다. 11개짜리 표라 손으로 유지할 만하다.
+YAHOO_TO_GICS = {
+    "Technology": "Information Technology",
+    "Healthcare": "Health Care",
+    "Financial Services": "Financials",
+    "Consumer Cyclical": "Consumer Discretionary",
+    "Consumer Defensive": "Consumer Staples",
+    "Basic Materials": "Materials",
+    # 아래 다섯은 이름이 같지만, 표에 없으면 매핑 누락인지 동일한 건지 구분되지 않는다.
+    "Communication Services": "Communication Services",
+    "Industrials": "Industrials",
+    "Energy": "Energy",
+    "Real Estate": "Real Estate",
+    "Utilities": "Utilities",
+}
 
-    .info는 종목당 1초쯤 걸리므로 지수 구성종목은 이 경로를 타지 않는다 —
-    그쪽은 구성종목 표에서 이름을 이미 받아 왔다. 여기 걸리는 건
-    사용자가 직접 넣은 소수 종목(지수 ETF, 해외 종목 등)뿐이다.
+
+def ensure_company_meta(db: Session, ticker: str) -> str | None:
+    """이름·업종이 아직 없는 티커만 yfinance로 한 번 조회해 채운다.
+
+    .info는 종목당 1초쯤 걸리므로 지수 구성종목은 대부분 이 경로를 타지 않는다 —
+    그쪽은 구성종목 표에서 이미 받아 왔다. 여기 걸리는 건 사용자가 직접 넣은
+    종목과, 나스닥 100에만 있어 S&P 표에서 업종을 얻지 못한 소수뿐이다.
     """
     row = db.query(Company).filter(Company.ticker == ticker).first()
-    if row:
+    if row and row.name and row.sector and row.industry:
         return row.name
     try:
         info = yf.Ticker(ticker).info
         name = info.get("longName") or info.get("shortName")
-    except Exception:  # noqa: BLE001 - 이름은 부가 정보다. 실패해도 시세 저장을 막지 않는다
-        return None
-    if not name:
-        return None
-    db.execute(insert(Company).prefix_with("OR IGNORE"),
-               [{"ticker": ticker, "name": name, "updated_at": datetime.utcnow()}])
+        sector, industry = info.get("sector"), info.get("industry")
+        sector = YAHOO_TO_GICS.get(sector, sector)
+    except Exception:  # noqa: BLE001 - 부가 정보다. 실패해도 시세 저장을 막지 않는다
+        return row.name if row else None
+
+    if row is None:
+        if not name:
+            return None
+        db.add(Company(ticker=ticker, name=name, sector=sector,
+                       industry=industry, updated_at=datetime.utcnow()))
+    else:
+        # 이미 있는 값은 덮지 않는다. 구성종목 표에서 온 값이 더 믿을 만하다.
+        row.name = row.name or name
+        row.sector = row.sector or sector
+        row.industry = row.industry or industry
     db.commit()
-    return name
+    return name or (row.name if row else None)
 
 
 def sync_universe(db: Session, universe: str) -> int:
@@ -141,20 +168,32 @@ def sync_universe(db: Session, universe: str) -> int:
     """
     from services.universe import constituents  # 순환 import 회피
 
-    pairs = constituents(universe, refresh=True)
+    pairs = constituents(universe, refresh=True)  # [{symbol, name, sector, industry}]
     now = datetime.utcnow()
 
     db.query(IndexMember).filter(IndexMember.universe == universe).delete()
     db.execute(
         insert(IndexMember),
-        [{"universe": universe, "ticker": sym, "updated_at": now} for sym, _ in pairs],
+        [{"universe": universe, "ticker": r["symbol"], "updated_at": now} for r in pairs],
     )
 
-    known = {c.ticker for c in db.query(Company.ticker).all()}
-    fresh = [{"ticker": sym, "name": name, "updated_at": now}
-             for sym, name in pairs if name and sym not in known]
-    if fresh:
-        db.execute(insert(Company).prefix_with("OR IGNORE"), fresh)
+    # 이미 있는 값은 덮지 않는다. 나스닥 100 표에는 업종이 없어서, 그대로 덮으면
+    # S&P 표에서 받아 둔 섹터가 지워진다.
+    existing = {c.ticker: c for c in db.query(Company).all()}
+    for row in pairs:
+        sym = row["symbol"]
+        company = existing.get(sym)
+        if company is None:
+            if not row["name"]:
+                continue
+            db.add(Company(ticker=sym, name=row["name"], sector=row["sector"],
+                           industry=row["industry"], industry_krx=row.get("industry_krx"),
+                           updated_at=now))
+        else:
+            company.name = company.name or row["name"]
+            company.sector = company.sector or row["sector"]
+            company.industry = company.industry or row["industry"]
+            company.industry_krx = company.industry_krx or row.get("industry_krx")
     db.commit()
     return len(pairs)
 
@@ -171,7 +210,7 @@ def list_cached_tickers(db: Session) -> list[dict]:
         .group_by(Stock.ticker)
         .all()
     )
-    names = {c.ticker: c.name for c in db.query(Company).all()}
+    meta = {c.ticker: c for c in db.query(Company).all()}
     members: dict[str, list[str]] = {}
     for m in db.query(IndexMember).all():
         members.setdefault(m.ticker, []).append(m.universe)
@@ -182,7 +221,10 @@ def list_cached_tickers(db: Session) -> list[dict]:
             "start_date": r.start_date,
             "end_date": r.end_date,
             "count": r.count,
-            "name": names.get(r.ticker),
+            "name": meta[r.ticker].name if r.ticker in meta else None,
+            "sector": meta[r.ticker].sector if r.ticker in meta else None,
+            "industry": meta[r.ticker].industry if r.ticker in meta else None,
+            "industry_krx": meta[r.ticker].industry_krx if r.ticker in meta else None,
             "universes": sorted(members.get(r.ticker, [])),
         }
         for r in results

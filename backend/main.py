@@ -1,7 +1,7 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from database import engine, Base
+from database import engine, Base, ensure_columns
 from routers import stocks, strategies, backtests, screening, macro
 
 logging.basicConfig(
@@ -11,6 +11,7 @@ logging.basicConfig(
 
 # Create tables
 Base.metadata.create_all(bind=engine)
+ensure_columns()
 
 app = FastAPI(title="Stock Backtesting API", version="1.0.0")
 

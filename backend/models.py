@@ -29,6 +29,13 @@ class Company(Base):
 
     ticker = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    # GICS 섹터(11종). 위키피디아 S&P 500 표에서 그대로 얻는다.
+    sector = Column(String)
+    # 세부 분류. 미국은 GICS 하위산업, 한국은 네이버 업종(WICS 계열, GICS 산업 수준).
+    industry = Column(String)
+    # KRX가 상장법인에 부여한 업종(통계청 KSIC 기반). 코스피 200의 공식 기준이라
+    # 한국 종목은 이쪽을 보여준다. GICS 계열인 industry는 시장 간 비교용으로 함께 남긴다.
+    industry_krx = Column(String)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 

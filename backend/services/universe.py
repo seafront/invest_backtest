@@ -24,10 +24,18 @@ HEADERS = {"User-Agent": "BacktestLab/1.0 (educational backtesting app)"}
 TIMEOUT = 30
 
 NAVER_ITEM = re.compile(r'/item/main\.naver\?code=(\d{6})"[^>]*>([^<]+)<')
+KIND_CORP_LIST = "http://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+NAVER_UPJONG = re.compile(r'sise_group_detail\.naver\?type=upjong&no=(\d+)"[^>]*>([^<]+)<')
 
 
-def _fetch_table(url: str, column: str, name_column: str) -> list[tuple[str, str]]:
-    """표 하나에 심볼과 이름이 같이 있는 페이지 (위키피디아·Slickcharts)."""
+def _fetch_table(
+    url: str,
+    column: str,
+    name_column: str,
+    sector_column: str | None = None,
+    industry_column: str | None = None,
+) -> list[dict]:
+    """표 하나에 심볼·이름·(있으면) 업종이 같이 있는 페이지 (위키피디아·Slickcharts)."""
     res = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
     res.raise_for_status()
 
@@ -40,16 +48,80 @@ def _fetch_table(url: str, column: str, name_column: str) -> list[tuple[str, str
     if table is None:
         raise ValueError(f"'{column}' 컬럼을 가진 표를 찾지 못했습니다 — 페이지 구조가 바뀐 것 같습니다")
 
+    def col(name: str | None) -> list[str | None]:
+        if name and name in [str(c) for c in table.columns]:
+            return [v.strip() or None for v in table[name].astype(str)]
+        return [None] * len(table)
+
+    sectors, industries = col(sector_column), col(industry_column)
     out = []
-    for sym, name in zip(table[column].astype(str), table[name_column].astype(str)):
-        # 야후는 복수 클래스 주식에 하이픈을 쓴다 (BRK.B → BRK-B).
-        out.append((sym.strip().upper().replace(".", "-"), name.strip()))
+    for i, (sym, name) in enumerate(zip(table[column].astype(str), table[name_column].astype(str))):
+        out.append({
+            # 야후는 복수 클래스 주식에 하이픈을 쓴다 (BRK.B → BRK-B).
+            "symbol": sym.strip().upper().replace(".", "-"),
+            "name": name.strip(),
+            "sector": sectors[i],
+            "industry": industries[i],
+            "industry_krx": None,
+        })
     return out
 
 
-def _fetch_naver_kospi200() -> list[tuple[str, str]]:
+def _naver_upjong_map() -> dict[str, str]:
+    """종목코드 → 네이버 업종명.
+
+    업종 목록(79개)을 받고 각 업종의 편입 종목을 훑는다. 요청이 80회쯤 되지만
+    한 번 받아 두면 되고, 개별 종목 페이지를 199번 도는 것보다 빠르다.
+    네이버 업종명은 GICS 산업 수준 이름을 한글로 옮긴 것이다.
+    """
+    res = requests.get(
+        "https://finance.naver.com/sise/sise_group.naver?type=upjong",
+        headers=HEADERS, timeout=TIMEOUT,
+    )
+    res.raise_for_status()
+    res.encoding = "euc-kr"
+
+    mapping: dict[str, str] = {}
+    for no, upjong in NAVER_UPJONG.findall(res.text):
+        detail = requests.get(
+            f"https://finance.naver.com/sise/sise_group_detail.naver?type=upjong&no={no}",
+            headers=HEADERS, timeout=TIMEOUT,
+        )
+        detail.encoding = "euc-kr"
+        for code, _ in NAVER_ITEM.findall(detail.text):
+            mapping.setdefault(code, upjong.strip())
+    return mapping
+
+
+def _krx_industry_map() -> dict[str, str]:
+    """종목코드 → KRX 업종 (통계청 KSIC 기반).
+
+    KIND의 상장법인목록 다운로드는 로그인 없이 전 종목(약 2,800개)을 한 번에 준다.
+    KRX가 코스피·코스피 200을 산출할 때 쓰는 분류라, 한국 종목은 이 값이 기준이다.
+    네이버 업종(WICS 계열)과는 체계가 달라 같은 회사도 이름이 다르게 나온다 —
+    하이트진로는 네이버로는 '음료', KRX로는 '알코올음료 제조업'이다.
+    """
+    res = requests.get(KIND_CORP_LIST, headers=HEADERS, timeout=60)
+    res.raise_for_status()
+    table = pd.read_html(io.StringIO(res.text))[0]
+    if "종목코드" not in table.columns or "업종" not in table.columns:
+        raise ValueError("KIND 상장법인목록 형식이 바뀌었습니다 — 종목코드/업종 컬럼이 없습니다")
+
+    out: dict[str, str] = {}
+    for code, upjong in zip(table["종목코드"], table["업종"]):
+        # 엑셀로 열리는 표라 종목코드가 숫자로 읽힌다. 앞자리 0이 사라지므로 채워 준다.
+        key = str(code).strip().zfill(6)
+        name = str(upjong).strip()
+        if name and name != "nan":
+            out[key] = name
+    return out
+
+
+def _fetch_naver_kospi200() -> list[dict]:
     """네이버 금융 코스피200 편입종목. 표에는 코드가 없어 링크에서 뽑는다."""
-    out: list[tuple[str, str]] = []
+    upjong = _naver_upjong_map()
+    krx = _krx_industry_map()
+    out: list[dict] = []
     seen: set[str] = set()
     for page in range(1, 25):  # 페이지당 20종목. 여유를 두고 새 종목이 없으면 멈춘다.
         res = requests.get(
@@ -63,7 +135,15 @@ def _fetch_naver_kospi200() -> list[tuple[str, str]]:
             break
         for code, name in fresh:
             seen.add(code)
-            out.append((f"{code}.KS", name))  # 야후는 코스피에 .KS 접미사를 쓴다
+            out.append({
+                "symbol": f"{code}.KS",  # 야후는 코스피에 .KS 접미사를 쓴다
+                "name": name,
+                # 섹터(GICS 11종)는 비워 둔다. 네이버 업종을 섹터로 올리려면
+                # 79개 한글 이름을 손으로 매핑해야 하고, 그 표는 GICS 개정 때마다 낡는다.
+                "sector": None,
+                "industry": upjong.get(code),
+                "industry_krx": krx.get(code),
+            })
     return out
 
 
@@ -76,6 +156,8 @@ SOURCES: dict[str, dict] = {
             url="https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
             column="Symbol",
             name_column="Security",
+            sector_column="GICS Sector",
+            industry_column="GICS Sub-Industry",
         ),
     },
     "nasdaq100": {
@@ -95,25 +177,26 @@ SOURCES: dict[str, dict] = {
     },
 }
 
-_cache: dict[str, list[tuple[str, str]]] = {}
+_cache: dict[str, list[dict]] = {}
 
 
-def constituents(universe: str, refresh: bool = False) -> list[tuple[str, str]]:
-    """(야후 심볼, 회사 이름) 목록."""
+def constituents(universe: str, refresh: bool = False) -> list[dict]:
+    """{symbol, name, sector, industry} 목록. 업종은 소스에 있을 때만 채워진다."""
     if universe not in SOURCES:
         raise ValueError(f"알 수 없는 유니버스: {universe}. 사용 가능: {', '.join(SOURCES)}")
     if universe in _cache and not refresh:
         return _cache[universe]
 
     src = SOURCES[universe]
-    out: list[tuple[str, str]] = []
+    out: list[dict] = []
     seen: set[str] = set()
-    for sym, name in src["fetch"]():
+    for row in src["fetch"]():
+        sym = row["symbol"]
         # 나스닥 100에는 GOOG/GOOGL처럼 한 회사의 복수 상장이 함께 들어 있다.
         # 종목 단위로는 서로 다른 시세라 둘 다 남기고, 같은 심볼만 걸러낸다.
         if sym and sym != "NAN" and sym not in seen:
             seen.add(sym)
-            out.append((sym, name))
+            out.append(row)
 
     if len(out) < src["min_count"]:
         raise ValueError(
@@ -125,4 +208,4 @@ def constituents(universe: str, refresh: bool = False) -> list[tuple[str, str]]:
 
 
 def symbols(universe: str, refresh: bool = False) -> list[str]:
-    return [sym for sym, _ in constituents(universe, refresh)]
+    return [row["symbol"] for row in constituents(universe, refresh)]

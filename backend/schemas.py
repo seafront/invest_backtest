@@ -27,6 +27,9 @@ class TickerInfo(BaseModel):
     end_date: date
     count: int
     name: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+    industry_krx: str | None = None
     universes: list[str] = []
 
 

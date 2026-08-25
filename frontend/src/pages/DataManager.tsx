@@ -72,6 +72,7 @@ export default function DataManager() {
   const [query, setQuery] = useState("");
   // 비어 있으면 전체를 보여준다. 칩을 켤수록 좁혀지는 것이 아니라 넓어지는 OR 조건이다.
   const [indexFilter, setIndexFilter] = useState<string[]>([]);
+  const [sector, setSector] = useState("");
   const [openTicker, setOpenTicker] = useState("");
   const [openSeries, setOpenSeries] = useState("");
 
@@ -228,16 +229,28 @@ export default function DataManager() {
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
 
+  // 섹터는 미국 종목만 채워진다 — 한국은 네이버 업종(산업 수준)만 있고
+  // 이를 GICS 섹터로 올리려면 손으로 만든 매핑표가 필요하다.
+  const sectors = [...new Set(tickers.map((t) => t.sector).filter(Boolean))].sort() as string[];
+
+  // 한국 종목은 KRX 업종(KSIC)을 보여준다 — 코스피 200을 산출하는 쪽의 기준이다.
+  // GICS 계열 값(industry)은 시장 간 비교용으로 함께 두고 툴팁에 띄운다.
+  const shownIndustry = (t: TickerInfo) => t.industry_krx ?? t.industry;
+  const otherIndustry = (t: TickerInfo) => (t.industry_krx ? t.industry : null);
+
   const q = query.trim().toLowerCase();
   const visible = tickers.filter((t) => {
     const matchesQuery =
       !q ||
       t.ticker.toLowerCase().includes(q) ||
-      (t.name ?? "").toLowerCase().includes(q);
+      (t.name ?? "").toLowerCase().includes(q) ||
+      (t.industry ?? "").toLowerCase().includes(q) ||
+      (t.industry_krx ?? "").toLowerCase().includes(q);
     const matchesIndex =
       indexFilter.length === 0 ||
       indexFilter.some((k) => (k === "none" ? t.universes.length === 0 : t.universes.includes(k)));
-    return matchesQuery && matchesIndex;
+    const matchesSector = !sector || t.sector === sector;
+    return matchesQuery && matchesIndex && matchesSector;
   });
 
   const chipStyle = (active: boolean): React.CSSProperties => ({
@@ -599,16 +612,33 @@ export default function DataManager() {
                 width: 240,
               }}
             />
+            <select
+              value={sector}
+              onChange={(e) => setSector(e.target.value)}
+              style={{
+                background: "#0f172a",
+                border: "1px solid #334155",
+                borderRadius: 6,
+                color: sector ? "#e2e8f0" : "#94a3b8",
+                padding: "7px 10px",
+                fontSize: 13,
+              }}
+            >
+              <option value="">전체 섹터 (GICS)</option>
+              {sectors.map((sc) => (
+                <option key={sc} value={sc}>{sc}</option>
+              ))}
+            </select>
             {[...universes.map((u) => ({ key: u.key, label: u.label })), { key: "none", label: "미분류" }].map((c) => (
               <button key={c.key} type="button" onClick={() => toggleIndex(c.key)}
                       aria-pressed={indexFilter.includes(c.key)} style={chipStyle(indexFilter.includes(c.key))}>
                 {c.label}
               </button>
             ))}
-            {(q || indexFilter.length > 0) && (
+            {(q || indexFilter.length > 0 || sector) && (
               <button
                 type="button"
-                onClick={() => { setQuery(""); setIndexFilter([]); }}
+                onClick={() => { setQuery(""); setIndexFilter([]); setSector(""); }}
                 style={{ background: "none", border: "none", color: "#3b82f6", fontSize: 12, cursor: "pointer" }}
               >
                 초기화
@@ -629,7 +659,7 @@ export default function DataManager() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #334155" }}>
-                {["Ticker", "Name", "Index", "Start", "End", "Records"].map((h) => (
+                {["Ticker", "Name", "업종", "Index", "Start", "End", "Records"].map((h) => (
                   <th
                     key={h}
                     style={{ color: "#94a3b8", textAlign: "left", padding: "8px 12px", fontWeight: 600 }}
@@ -655,6 +685,15 @@ export default function DataManager() {
                     </td>
                     <td style={{ color: "#94a3b8", padding: "8px 12px", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {t.name ?? "—"}
+                    </td>
+                    <td
+                      title={[t.sector, otherIndustry(t) && `GICS 계열: ${otherIndustry(t)}`]
+                        .filter(Boolean)
+                        .join(" · ") || undefined}
+                      style={{ color: "#94a3b8", padding: "8px 12px", fontSize: 13, maxWidth: 190,
+                               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {shownIndustry(t) ?? "—"}
                     </td>
                     <td style={{ padding: "8px 12px" }}>
                       {t.universes.length === 0 ? (
@@ -686,7 +725,7 @@ export default function DataManager() {
                   </tr>
                   {openTicker === t.ticker && (
                     <tr>
-                      <td colSpan={6} style={{ padding: 0 }}>
+                      <td colSpan={7} style={{ padding: 0 }}>
                         <StockPreview ticker={t.ticker} />
                       </td>
                     </tr>

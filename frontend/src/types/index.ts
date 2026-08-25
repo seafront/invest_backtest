@@ -13,6 +13,9 @@ export interface TickerInfo {
   end_date: string;
   count: number;
   name: string | null;
+  sector: string | null;
+  industry: string | null;
+  industry_krx: string | null;
   universes: string[];
 }
 
