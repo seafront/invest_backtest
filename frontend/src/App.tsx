@@ -5,6 +5,8 @@ import StockDetail from "./pages/StockDetail";
 import MacroDetail from "./pages/MacroDetail";
 import BacktestRun from "./pages/BacktestRun";
 import BacktestResult from "./pages/BacktestResult";
+import Industry from "./pages/Industry";
+import IndustryDetail from "./pages/IndustryDetail";
 import Screener from "./pages/Screener";
 import Strategies from "./pages/Strategies";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -57,6 +59,9 @@ function App() {
           <NavLink to="/screener" style={({ isActive }) => (isActive ? activeStyle : navStyle)}>
             Screener
           </NavLink>
+          <NavLink to="/industry" style={({ isActive }) => (isActive ? activeStyle : navStyle)}>
+            Industry
+          </NavLink>
         </nav>
 
         {/* Content */}
@@ -71,6 +76,9 @@ function App() {
               <Route path="/results/:id" element={<BacktestResult />} />
               <Route path="/strategies" element={<Strategies />} />
               <Route path="/screener" element={<Screener />} />
+              <Route path="/industry" element={<Industry />} />
+              <Route path="/industry/:key" element={<IndustryDetail />} />
+              <Route path="/industry/:key/:group" element={<IndustryDetail />} />
             </Routes>
           </ErrorBoundary>
         </main>

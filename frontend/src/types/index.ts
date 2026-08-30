@@ -178,6 +178,87 @@ export interface FundamentalSeries {
   data: FundamentalPoint[];
 }
 
+export interface IndustryInfo {
+  key: string;
+  label: string;
+  note: string;
+}
+
+export interface GroupMemberPrice {
+  close: number;
+  as_of: string;
+  return_20d: number | null;
+  return_60d: number | null;
+  return_252d: number | null;
+  from_high_pct: number | null;
+  volatility_60d: number | null;
+}
+
+export interface GroupMemberFundamental {
+  period_end: string;
+  quarters: number;
+  operating_margin: number | null;
+  operating_margin_delta: number | null;
+  gross_margin: number | null;
+  revenue_qoq: number | null;
+  revenue_yoy: number | null;
+  inventory_to_revenue: number | null;
+  ocf_to_revenue: number | null;
+  debt_to_equity: number | null;
+}
+
+export interface GroupMemberFlow {
+  frgn_ntby_20d: number;
+  orgn_ntby_20d: number;
+  prsn_ntby_20d: number;
+}
+
+export interface GroupMemberSnapshot {
+  market_cap: number | null;
+  per: number | null;
+  pbr: number | null;
+  target_upside: number | null;
+  analyst_count: number | null;
+  recommendation: string | null;
+}
+
+export interface GroupMember {
+  ticker: string;
+  name: string | null;
+  cached: boolean;
+  price: GroupMemberPrice | null;
+  fundamental: GroupMemberFundamental | null;
+  flow: GroupMemberFlow | null;
+  snapshot: GroupMemberSnapshot | null;
+}
+
+export interface ProductGroup {
+  key: string;
+  label: string;
+  note: string;
+  unlisted: string[];
+  members: GroupMember[];
+  /** {date, "<ticker>": 값}. 티커가 키라 인덱스 시그니처로 받는다. */
+  price_series: Record<string, string | number | null>[];
+  financial_series: Record<string, Record<string, string | number | null>[]>;
+}
+
+export interface FinancialMetricInfo {
+  key: string;
+  label: string;
+  unit: string;
+  baseline: number | null;
+  note: string;
+}
+
+export interface IndustryOverview {
+  industry: string;
+  label: string;
+  note: string;
+  metrics: FinancialMetricInfo[];
+  groups: ProductGroup[];
+}
+
 export interface IndicatorSignal {
   key: string;
   label: string;

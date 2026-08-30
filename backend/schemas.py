@@ -316,6 +316,88 @@ class SnapshotCaptureRequest(BaseModel):
     tickers: list[str] | None = None
 
 
+class IndustryInfo(BaseModel):
+    key: str
+    label: str
+    note: str
+
+
+class GroupMemberPrice(BaseModel):
+    close: float
+    as_of: date
+    return_20d: float | None
+    return_60d: float | None
+    return_252d: float | None
+    from_high_pct: float | None
+    volatility_60d: float | None
+
+
+class GroupMemberFundamental(BaseModel):
+    period_end: date
+    quarters: int
+    operating_margin: float | None
+    operating_margin_delta: float | None
+    gross_margin: float | None
+    revenue_qoq: float | None
+    revenue_yoy: float | None
+    inventory_to_revenue: float | None
+    ocf_to_revenue: float | None
+    debt_to_equity: float | None
+
+
+class GroupMemberFlow(BaseModel):
+    frgn_ntby_20d: int
+    orgn_ntby_20d: int
+    prsn_ntby_20d: int
+
+
+class GroupMemberSnapshot(BaseModel):
+    market_cap: float | None
+    per: float | None
+    pbr: float | None
+    target_upside: float | None
+    analyst_count: int | None
+    recommendation: str | None
+
+
+class GroupMember(BaseModel):
+    ticker: str
+    name: str | None
+    cached: bool
+    price: GroupMemberPrice | None
+    fundamental: GroupMemberFundamental | None
+    flow: GroupMemberFlow | None
+    snapshot: GroupMemberSnapshot | None
+
+
+class ProductGroup(BaseModel):
+    key: str
+    label: str
+    note: str
+    unlisted: list[str]
+    members: list[GroupMember]
+    # {date, <ticker>: 값} 형태. 티커가 키라 스키마를 고정하지 않는다.
+    price_series: list[dict] = []
+    # {지표: [{date, <ticker>: 값}]} — 화면에서 지표를 바꿔 가며 본다.
+    financial_series: dict[str, list[dict]] = {}
+
+
+class FinancialMetricInfo(BaseModel):
+    key: str
+    label: str
+    unit: str
+    baseline: float | None
+    note: str
+
+
+class IndustryOverview(BaseModel):
+    industry: str
+    label: str
+    note: str
+    metrics: list[FinancialMetricInfo] = []
+    groups: list[ProductGroup]
+
+
 # --- Macro ---
 class MacroCatalogItem(BaseModel):
     series_id: str

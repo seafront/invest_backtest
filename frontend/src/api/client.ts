@@ -20,6 +20,8 @@ import type {
   FullScreenResponse,
   ScanRequest,
   ScanResponse,
+  IndustryInfo,
+  IndustryOverview,
 } from "../types";
 
 const api = axios.create({
@@ -122,3 +124,9 @@ export const fullScreening = (params: {
 
 export const scanStocks = (req: ScanRequest) =>
   api.post<ScanResponse>("/screening/scan", req);
+
+// Industry
+export const listIndustries = () => api.get<IndustryInfo[]>("/industry/");
+
+export const getIndustry = (key: string) =>
+  api.get<IndustryOverview>(`/industry/${encodeURIComponent(key)}`);
