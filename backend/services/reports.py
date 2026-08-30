@@ -93,6 +93,112 @@ def _rows(frame: pd.DataFrame, meta: pd.DataFrame, value_columns: list[str], n: 
     return out
 
 
+# 곡선을 그릴 구간. 표(TREND_WINDOWS)와 같은 길이를 쓴다 — 표에서 본 숫자가
+# 그래프의 어느 지점인지 바로 이어져야 한다.
+CURVE_RANGES = [
+    {"key": "m1", "label": "1달", "months": 1},
+    {"key": "m3", "label": "3달", "months": 3},
+    {"key": "m6", "label": "6달", "months": 6},
+    {"key": "y1", "label": "1년", "months": 12},
+    {"key": "y3", "label": "3년", "months": 36},
+    {"key": "y5", "label": "5년", "months": 60},
+]
+CURVE_POINTS = 220   # 화면 너비보다 촘촘해봐야 읽히지 않는다
+
+
+def _sector_frame(db: Session, universe: str) -> tuple[pd.DataFrame, pd.Series]:
+    """업종별 집계에 필요한 종가 표와 종목→업종 대응을 함께 낸다."""
+    prices = pd.read_sql(
+        """
+        select s.ticker, s.date, s.close
+        from stocks s
+        join index_members m on m.ticker = s.ticker and m.universe = :universe
+        """,
+        db.bind, params={"universe": universe}, parse_dates=["date"],
+    )
+    if prices.empty:
+        raise ValueError(f"{universe}: 시세가 없습니다. 먼저 수집하세요.")
+
+    meta = pd.read_sql(
+        """
+        select c.ticker, c.sector, c.industry_krx, c.industry
+        from companies c
+        join index_members m on m.ticker = c.ticker and m.universe = :universe
+        """,
+        db.bind, params={"universe": universe},
+    )
+    wide = prices.pivot(index="date", columns="ticker", values="close").sort_index()
+    # build()과 같은 이유로 거래일이 아닌 날짜를 뺀다. 한 종목만 있는 날이 마지막
+    # 행이 되면 나머지 전부의 수익률이 NaN이 된다.
+    wide = wide[wide.notna().sum(axis=1) >= max(1, wide.shape[1] * 0.5)]
+    if wide.empty:
+        raise ValueError(f"{universe}: 거래일이 부족합니다")
+
+    indexed = meta.set_index("ticker")
+    industry = indexed["sector"].fillna(indexed["industry_krx"]).fillna(indexed["industry"])
+    return wide, industry
+
+
+def sector_curves(db: Session, universe: str = "kospi200", months: int = 60) -> dict:
+    """업종별 누적수익률을 달력 위에 그릴 수 있게 낸다.
+
+    구간별 표가 여섯 개의 점이라면 이것은 그 사이를 채운 선이다. 점만 보면 "1년에
+    +313%"까지는 알아도 그게 한 번에 뛴 것인지 꾸준히 오른 것인지 모른다. 언제
+    갈라졌는지는 선을 그려야 보인다.
+
+    구간 시작일을 0%로 두고 다시 센다. 업종마다 주가 수준이 다르므로 원래 값을
+    그대로 겹치면 비싼 업종이 위, 싼 업종이 아래로 늘어설 뿐 추세가 안 보인다.
+
+    종목별로 먼저 되센 다음 업종 안에서 중앙값을 잡는다. 순서를 바꾸면 - 업종
+    주가를 먼저 더하고 되세면 - 대형주 한 종목이 그 업종의 곡선이 된다.
+    """
+    wide, industry = _sector_frame(db, universe)
+
+    as_of = wide.index[-1]
+    target = as_of - pd.DateOffset(months=months)
+    window = wide[wide.index >= target]
+    if len(window) < 2:
+        raise ValueError(f"{universe}: {months}개월치 거래일이 부족합니다")
+
+    # 구간 시작 시점에 값이 없는 종목은 뺀다. 중간에 상장한 종목을 첫 등장일 기준으로
+    # 되세면 그 종목만 0%에서 출발해 업종 중앙값을 끌어당긴다.
+    base = window.iloc[0]
+    window = window.loc[:, base.notna()]
+    rebased = (window / base[window.columns] - 1) * 100
+
+    if len(rebased) > CURVE_POINTS:
+        step = len(rebased) // CURVE_POINTS
+        keep = list(range(0, len(rebased), step))
+        if keep[-1] != len(rebased) - 1:
+            keep.append(len(rebased) - 1)   # 마지막 점은 항상 남긴다
+        rebased = rebased.iloc[keep]
+
+    groups = industry.reindex(rebased.columns).dropna()
+    sectors: list[dict] = []
+    for name, members in groups.groupby(groups):
+        columns = [c for c in members.index if c in rebased.columns]
+        if len(columns) < 2:    # 한 종목뿐인 업종은 업종 흐름이라 부르기 어렵다
+            continue
+        median = rebased[columns].median(axis=1)
+        sectors.append({
+            "industry": name,
+            "count": len(columns),
+            "return_pct": _f(median.iloc[-1]),
+            "values": [_f(v) for v in median],
+        })
+    sectors.sort(key=lambda r: r["return_pct"] if r["return_pct"] is not None else -9999, reverse=True)
+
+    return {
+        "universe": universe,
+        "months": months,
+        "as_of": as_of.date(),
+        "start_date": rebased.index[0].date(),
+        "dates": [d.date() for d in rebased.index],
+        "market": [_f(v) for v in rebased.median(axis=1)],
+        "sectors": sectors,
+    }
+
+
 def sector_trends(db: Session, universe: str = "kospi200") -> dict:
     """업종별 수익률을 여섯 구간으로 나란히 낸다.
 

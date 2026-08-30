@@ -215,6 +215,30 @@ export interface SectorTrendResponse {
   sectors: SectorTrendRow[];
 }
 
+export interface RangeInfo {
+  key: string;
+  label: string;
+  months: number;
+}
+
+export interface SectorCurve {
+  industry: string;
+  count: number;
+  return_pct: number | null;
+  /** dates 와 같은 길이. 구간 시작을 0%로 둔 누적수익률. */
+  values: (number | null)[];
+}
+
+export interface SectorCurveResponse {
+  universe: string;
+  months: number;
+  as_of: string;
+  start_date: string;
+  dates: string[];
+  market: (number | null)[];
+  sectors: SectorCurve[];
+}
+
 export interface IndustryInfo {
   key: string;
   label: string;

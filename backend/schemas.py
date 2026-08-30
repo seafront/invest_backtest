@@ -490,6 +490,30 @@ class SectorTrendResponse(BaseModel):
     sectors: list[SectorTrendRow]
 
 
+class SectorCurve(BaseModel):
+    industry: str
+    count: int
+    return_pct: float | None
+    # dates 와 같은 길이. 구간 시작을 0%로 둔 누적수익률.
+    values: list[float | None]
+
+
+class SectorCurveResponse(BaseModel):
+    universe: str
+    months: int
+    as_of: date
+    start_date: date
+    dates: list[date]
+    market: list[float | None]
+    sectors: list[SectorCurve]
+
+
+class RangeInfo(BaseModel):
+    key: str
+    label: str
+    months: int
+
+
 class DrawdownSummary(BaseModel):
     median: float | None
     within_5pct: int

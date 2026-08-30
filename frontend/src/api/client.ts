@@ -24,6 +24,8 @@ import type {
   IndustryOverview,
   PeriodInfo,
   ReportResponse,
+  RangeInfo,
+  SectorCurveResponse,
   SectorTrendResponse,
 } from "../types";
 
@@ -149,3 +151,8 @@ export const getReport = (period: string, universe = "kospi200") =>
 
 export const getSectorTrends = (universe = "kospi200") =>
   api.get<SectorTrendResponse>("/reports/sector-trends", { params: { universe } });
+
+export const listCurveRanges = () => api.get<RangeInfo[]>("/reports/curve-ranges");
+
+export const getSectorCurves = (universe = "kospi200", months = 60) =>
+  api.get<SectorCurveResponse>("/reports/sector-curves", { params: { universe, months } });

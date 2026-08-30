@@ -1,11 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getReport, getSectorTrends, listPeriods, listUniverses } from "../api/client";
+import {
+  getReport, getSectorCurves, getSectorTrends, listCurveRanges, listPeriods, listUniverses,
+} from "../api/client";
 import type {
-  PeriodInfo, ReportResponse, ReportRow, SectorRow, SectorTrendResponse, UniverseInfo,
+  PeriodInfo, RangeInfo, ReportResponse, ReportRow, SectorCurve, SectorCurveResponse,
+  SectorRow, SectorTrendResponse, UniverseInfo,
 } from "../types";
+import {
+  CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer,
+  Tooltip, XAxis, YAxis,
+} from "recharts";
 import { errMessage } from "../utils/error";
-import { POSITIVE, NEGATIVE } from "../theme";
+import { axisFormatter, evenTicks, ts } from "../utils/chart";
+import { POSITIVE, NEGATIVE, SERIES_COLORS } from "../theme";
 
 /**
  * 코스피 200 주기별 리포트.
@@ -146,6 +154,112 @@ function Sectors({ rows }: { rows: SectorRow[] }) {
   );
 }
 
+/** 툴팁 머리글용. 축 눈금은 짧게 줄이지만 툴팁에서는 날짜가 온전해야 한다. */
+const fmtDay = (t: number) => new Date(t).toISOString().slice(0, 10);
+
+// 시장선. 업종 색과 겹치지 않도록 팔레트 밖의 회색을 쓰고, 파선으로 한 번 더 가른다.
+const MARKET_COLOR = "#64748b";
+// 한 번에 그릴 수 있는 업종 수. 팔레트가 여섯 색이고, 그 이상은 선을 세는 데
+// 시간이 걸려 추세를 못 읽는다.
+const MAX_LINES = SERIES_COLORS.length;
+
+/**
+ * 가로가 날짜, 세로가 구간 시작 대비 누적수익률.
+ *
+ * 아래 표가 여섯 개의 점이라면 이것은 그 사이를 채운 선이다. 점만 보면 "1년에
+ * +313%"까지는 알아도 그게 한 번에 뛴 것인지 꾸준히 오른 것인지 모른다. 언제
+ * 갈라졌는지는 선을 그려야 보인다.
+ *
+ * 세로는 로그다. 같은 구간 안에서도 +3300%와 -60%가 함께 오므로 선형 축에서는
+ * 위쪽 한 업종이 축을 다 쓰고 나머지가 바닥에 눌린다. 로그에서는 같은 세로 거리가
+ * 같은 배수를 뜻해 두 배 오른 구간이 어디서든 같은 기울기로 보인다. 눈금은 배수가
+ * 아니라 수익률로 적는다 — 알고 싶은 것은 1.11배가 아니라 +11%다.
+ *
+ * 수익률(-100%~)을 성장배수(0~)로 옮겨 담는다. 로그 축은 음수를 못 그리는데
+ * 원금이 0 아래로 내려가는 일은 없으므로 배수는 항상 양수다.
+ */
+function TrendChart({
+  data, selected, scale,
+}: {
+  data: SectorCurveResponse;
+  selected: string[];
+  scale: "log" | "linear";
+}) {
+  const toY = (v: number | null | undefined) =>
+    v === null || v === undefined ? null : scale === "log" ? 1 + v / 100 : v;
+
+  const picked = selected
+    .map((name) => data.sectors.find((r) => r.industry === name))
+    .filter((r): r is SectorCurve => !!r);
+
+  const rows = data.dates.map((d, i) => {
+    const row: Record<string, number | null> = { t: ts(d), "시장 전체": toY(data.market[i]) };
+    for (const sector of picked) row[sector.industry] = toY(sector.values[i]);
+    return row;
+  });
+
+  const values = rows
+    .flatMap((r) => Object.entries(r).filter(([k]) => k !== "t").map(([, v]) => v))
+    .filter((v): v is number => typeof v === "number");
+  const lo = Math.min(...values, scale === "log" ? 1 : 0);
+  const hi = Math.max(...values, scale === "log" ? 1 : 0);
+  const yDomain: [number, number] =
+    scale === "log"
+      ? [lo * 0.9, hi * 1.1]
+      : [lo - Math.abs(lo) * 0.1 - 1, hi + Math.abs(hi) * 0.1 + 1];
+
+  // 로그 축의 눈금을 직접 잡는다. recharts는 10의 거듭제곱에서 눈금을 고르는데,
+  // 1달 구간은 배수가 0.8~1.4 사이라 그 안에 거듭제곱이 하나도 없다. 실제로 0% 위쪽에
+  // 눈금이 통째로 비어 위쪽 절반을 읽을 수 없었다. 로그 공간에서 균등하게 나눈다.
+  const yTicks =
+    scale === "log" && yDomain[0] > 0
+      ? Array.from({ length: 6 }, (_, i) =>
+          Math.exp(Math.log(yDomain[0]) + ((Math.log(yDomain[1]) - Math.log(yDomain[0])) * i) / 5))
+      : undefined;
+
+  const xDomain: [number, number] = [rows[0]?.t ?? 0, rows[rows.length - 1]?.t ?? 0];
+  const fmtX = axisFormatter(xDomain);
+  const asPct = (v: number) => (scale === "log" ? (v - 1) * 100 : v);
+  const label = (v: number) => `${asPct(v) > 0 ? "+" : ""}${asPct(v).toFixed(0)}%`;
+
+  return (
+    <ResponsiveContainer width="100%" height={360}>
+      <LineChart data={rows} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+        <XAxis
+          dataKey="t" type="number" scale="time" domain={xDomain}
+          ticks={evenTicks(xDomain)} tickFormatter={fmtX}
+          tick={{ fill: MUTED, fontSize: 11 }} tickLine={false}
+        />
+        <YAxis
+          width={64} scale={scale} domain={yDomain} allowDataOverflow ticks={yTicks}
+          tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} tickFormatter={label}
+        />
+        <Tooltip
+          contentStyle={{ background: "#0f172a", border: `1px solid ${GRID}` }}
+          labelStyle={{ color: INK }}
+          labelFormatter={(t) => fmtDay(Number(t))}
+          formatter={(v, name) => [label(Number(v)), String(name)] as [string, string]}
+        />
+        <Legend wrapperStyle={{ fontSize: 12 }} />
+        {/* 본전선. 로그 축에서는 배수 1이 그 자리다. */}
+        <ReferenceLine y={scale === "log" ? 1 : 0} stroke={MUTED} strokeDasharray="4 4" />
+        <Line
+          type="monotone" dataKey="시장 전체" stroke={MARKET_COLOR} strokeWidth={3}
+          strokeDasharray="6 3" dot={false} isAnimationActive={false} connectNulls={false}
+        />
+        {picked.map((sector, i) => (
+          <Line
+            key={sector.industry} type="monotone" dataKey={sector.industry}
+            stroke={SERIES_COLORS[i % SERIES_COLORS.length]} strokeWidth={2}
+            dot={false} isAnimationActive={false} connectNulls={false}
+          />
+        ))}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
 /**
  * 업종을 여섯 구간에 나란히 놓는다.
  *
@@ -248,6 +362,17 @@ export default function Report() {
   // null로 되돌리면 렌더 중에 상태를 바꾸는 셈이라, 지금 것인지를 읽는 쪽에서 가린다.
   const [trendState, setTrendState] =
     useState<{ universe: string; data: SectorTrendResponse | null } | null>(null);
+  const [ranges, setRanges] = useState<RangeInfo[]>([]);
+  const [months, setMonths] = useState(60);
+  const [curveState, setCurveState] =
+    useState<{ key: string; data: SectorCurveResponse | null } | null>(null);
+  // 사용자가 고른 업종. 어느 유니버스에서 고른 것인지 함께 들고 있어야 한다 —
+  // 지수를 바꾸면 그 업종이 없을 수 있는데, 렌더 중에 비우면 상태를 렌더 안에서
+  // 바꾸는 셈이 된다. 읽는 쪽에서 가리면 그럴 필요가 없다.
+  const [chosenState, setChosenState] = useState<{ universe: string; names: string[] }>(
+    { universe: "", names: [] },
+  );
+  const [scale, setScale] = useState<"log" | "linear">("log");
   const [periods, setPeriods] = useState<PeriodInfo[]>([]);
   const [universes, setUniverses] = useState<UniverseInfo[]>([]);
   const [state, setState] = useState<{ key: string; data: ReportResponse | null; error: string } | null>(null);
@@ -259,6 +384,7 @@ export default function Report() {
   useEffect(() => {
     listPeriods().then((r) => setPeriods(r.data)).catch(() => setPeriods([]));
     listUniverses().then((r) => setUniverses(r.data)).catch(() => setUniverses([]));
+    listCurveRanges().then((r) => setRanges(r.data)).catch(() => setRanges([]));
   }, []);
 
   useEffect(() => {
@@ -283,7 +409,36 @@ export default function Report() {
     };
   }, [universe]);
 
+  const curveKey = `${universe}:${months}`;
+  useEffect(() => {
+    let cancelled = false;
+    getSectorCurves(universe, months)
+      .then((r) => !cancelled && setCurveState({ key: curveKey, data: r.data }))
+      .catch(() => !cancelled && setCurveState({ key: curveKey, data: null }));
+    return () => {
+      cancelled = true;
+    };
+  }, [curveKey, universe, months]);
+
   const trends = trendState?.universe === universe ? trendState.data : null;
+  const curves = curveState?.key === curveKey ? curveState.data : null;
+
+  // 기본은 상위 3 + 하위 3. 여섯 색을 다 쓰면서, 앞서가는 쪽과 밀린 쪽을 함께 보여
+  // 시장선이 그 사이 어디에 있는지가 한눈에 들어온다.
+  const defaultPick = curves
+    ? [...curves.sectors.slice(0, 3), ...curves.sectors.slice(-3)].map((r) => r.industry)
+    : [];
+  const chosen = chosenState.universe === universe ? chosenState.names : [];
+  const selected = chosen.length ? chosen : defaultPick;
+
+  const toggleSector = (industry: string) => {
+    const names = selected.includes(industry)
+      ? selected.filter((n) => n !== industry)
+      : selected.length < MAX_LINES
+        ? [...selected, industry]
+        : selected;
+    setChosenState({ universe, names });
+  };
   const current = state?.key === key ? state : null;
   const data = current?.data ?? null;
 
@@ -406,6 +561,79 @@ export default function Report() {
             </p>
             <Sectors rows={data.sectors} />
           </div>
+
+          {curves && curves.sectors.length > 0 && (
+            <div style={card}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+                <h3 style={{ color: INK, margin: "0 0 4px" }}>업종 추세 — 시점별</h3>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {ranges.map((r) => (
+                    <button
+                      key={r.key}
+                      type="button"
+                      onClick={() => setMonths(r.months)}
+                      style={{
+                        background: months === r.months ? GRID : "transparent",
+                        color: months === r.months ? INK : MUTED,
+                        border: `1px solid ${GRID}`, borderRadius: 6,
+                        padding: "5px 12px", fontSize: 12, cursor: "pointer",
+                      }}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                  <span style={{ color: "#334155", margin: "0 4px" }}>|</span>
+                  {(["log", "linear"] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setScale(s)}
+                      style={{
+                        background: scale === s ? GRID : "transparent",
+                        color: scale === s ? INK : MUTED,
+                        border: `1px solid ${GRID}`, borderRadius: 6,
+                        padding: "5px 12px", fontSize: 12, cursor: "pointer",
+                      }}
+                    >
+                      {s === "log" ? "로그" : "선형"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p style={{ color: MUTED, fontSize: 13, marginBottom: 12 }}>
+                {curves.start_date}을 0%로 두고 다시 센 누적수익률. 업종마다 주가 수준이
+                달라 원래 값을 겹치면 비싼 업종이 위로 늘어설 뿐 추세가 안 보인다.
+                세로가 로그인 것은 같은 구간에 +3300%와 −60%가 함께 오기 때문이다 —
+                선형에서는 위쪽 한 업종이 축을 다 쓰고 나머지가 바닥에 눌린다.
+                업종은 최대 {MAX_LINES}개까지 고를 수 있다.
+              </p>
+
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                {curves.sectors.map((r) => {
+                  const on = selected.includes(r.industry);
+                  const color = on ? SERIES_COLORS[selected.indexOf(r.industry) % SERIES_COLORS.length] : GRID;
+                  return (
+                    <button
+                      key={r.industry}
+                      type="button"
+                      onClick={() => toggleSector(r.industry)}
+                      title={`${r.count}종목 · ${pct(r.return_pct, 0)}`}
+                      style={{
+                        background: "transparent", color: on ? INK : "#64748b",
+                        border: `1px solid ${color}`, borderRadius: 999,
+                        padding: "4px 10px", fontSize: 11, cursor: "pointer",
+                        maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}
+                    >
+                      {r.industry}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <TrendChart data={curves} selected={selected} scale={scale} />
+            </div>
+          )}
 
           {trends && trends.sectors.length > 0 && (
             <div style={card}>
