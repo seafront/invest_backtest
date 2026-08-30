@@ -10,6 +10,7 @@ backend/*.db
 
 # 증권사 API 자격증명 — 절대 커밋하지 말 것. 실전 앱키는 주문 API까지 열린다.
 backend/.env
+backend/logs/
 backend/.kis_token.json
 
 # Node
