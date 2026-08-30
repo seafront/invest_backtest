@@ -2,6 +2,7 @@
 
 This file guides Claude Code (and other AI agents) when working in this repository.
 For a human-facing overview see `README.md`; for deep design rationale see `ARCHITECTURE.md`.
+For what data the app supports today and what to add next, see `doc/roadmap.md`.
 
 ## What this is
 
