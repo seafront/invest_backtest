@@ -6,6 +6,7 @@ import MacroDetail from "./pages/MacroDetail";
 import BacktestRun from "./pages/BacktestRun";
 import BacktestResult from "./pages/BacktestResult";
 import Industry from "./pages/Industry";
+import Report from "./pages/Report";
 import IndustryDetail from "./pages/IndustryDetail";
 import Screener from "./pages/Screener";
 import Strategies from "./pages/Strategies";
@@ -62,6 +63,9 @@ function App() {
           <NavLink to="/industry" style={({ isActive }) => (isActive ? activeStyle : navStyle)}>
             Industry
           </NavLink>
+          <NavLink to="/report" style={({ isActive }) => (isActive ? activeStyle : navStyle)}>
+            Report
+          </NavLink>
         </nav>
 
         {/* Content */}
@@ -79,6 +83,8 @@ function App() {
               <Route path="/industry" element={<Industry />} />
               <Route path="/industry/:key" element={<IndustryDetail />} />
               <Route path="/industry/:key/:group" element={<IndustryDetail />} />
+              <Route path="/report" element={<Report />} />
+              <Route path="/report/:universe/:period" element={<Report />} />
             </Routes>
           </ErrorBoundary>
         </main>

@@ -54,6 +54,15 @@ INDUSTRIES: dict[str, dict] = {
 PRICE_LOOKBACK = 400  # 1년 수익률과 52주 고가를 내려면 이 정도 여유가 필요하다
 FLOW_WINDOW = 20
 
+# 주가 비교 구간. 표의 수익률 칸(20일·60일·1년)은 고정이고, 이건 차트에만 적용된다.
+CHART_RANGES = {
+    "3m": {"label": "3개월", "days": 63},
+    "6m": {"label": "6개월", "days": 126},
+    "1y": {"label": "1년", "days": 252},
+    "3y": {"label": "3년", "days": 756},
+}
+DEFAULT_RANGE = "1y"
+
 
 def _price_metrics(db: Session, tickers: list[str]) -> dict[str, dict]:
     frame = pd.read_sql(
@@ -203,7 +212,7 @@ def _rebased_series(db: Session, tickers: list[str], days: int = 252) -> list[di
         """
         select ticker, date, close from stocks
         where ticker in ({}) and date >= date((select max(date) from stocks), '-{} day')
-        """.format(",".join(f"'{t}'" for t in tickers), int(days * 1.5)),
+        """.format(",".join(f"'{t}'" for t in tickers), int(days * 1.6)),
         db.bind, parse_dates=["date"],
     )
     if frame.empty:
@@ -290,10 +299,13 @@ def _financial_series(db: Session, tickers: list[str]) -> dict[str, list[dict]]:
     }
 
 
-def overview(db: Session, industry: str) -> dict:
+def overview(db: Session, industry: str, chart_range: str = DEFAULT_RANGE) -> dict:
     spec = INDUSTRIES.get(industry)
     if spec is None:
         raise ValueError(f"알 수 없는 산업: {industry}. 사용 가능: {', '.join(INDUSTRIES)}")
+    if chart_range not in CHART_RANGES:
+        raise ValueError(f"알 수 없는 구간: {chart_range}. 사용 가능: {', '.join(CHART_RANGES)}")
+    days = CHART_RANGES[chart_range]["days"]
 
     tickers = sorted({t for g in spec["groups"] for t in g["members"]})
     names = {c.ticker: c.name for c in db.query(Company).filter(Company.ticker.in_(tickers)).all()}
@@ -323,7 +335,7 @@ def overview(db: Session, industry: str) -> dict:
         groups.append({
             **{k: g[k] for k in ("key", "label", "note", "unlisted")},
             "members": members,
-            "price_series": _rebased_series(db, listed),
+            "price_series": _rebased_series(db, listed, days),
             "financial_series": _financial_series(db, g["members"]),
         })
 
@@ -331,6 +343,8 @@ def overview(db: Session, industry: str) -> dict:
         "industry": industry,
         "label": spec["label"],
         "note": spec["note"],
+        "chart_range": chart_range,
+        "ranges": [{"key": k, **v} for k, v in CHART_RANGES.items()],
         "metrics": [{"key": k, **v} for k, v in FINANCIAL_METRICS.items()],
         "groups": groups,
     }

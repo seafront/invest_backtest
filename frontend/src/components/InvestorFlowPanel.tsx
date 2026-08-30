@@ -80,7 +80,7 @@ export default function InvestorFlowPanel({ ticker }: { ticker: string }) {
     setSyncing(true);
     setError("");
     try {
-      const { data } = await syncInvestorFlow(ticker, 3);
+      const { data } = await syncInvestorFlow(ticker, 60);
       setState({ ticker, data });
     } catch {
       setError("수집에 실패했습니다. 증권사 API 키 설정을 확인하세요.");
@@ -132,7 +132,7 @@ export default function InvestorFlowPanel({ ticker }: { ticker: string }) {
             cursor: syncing ? "default" : "pointer",
           }}
         >
-          {syncing ? "수집 중…" : "3개월 다시 받기"}
+          {syncing ? "수집 중…" : "5년치 받기"}
         </button>
       </div>
       <p style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>

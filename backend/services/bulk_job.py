@@ -118,7 +118,7 @@ def _collect_flows(db, tickers: list[str], months: int) -> None:
 
 
 def run(universe: str, tickers: list[str], start_date: date, end_date: date,
-        with_flows: bool = True, flow_months: int = 3) -> None:
+        with_flows: bool = True, flow_months: int = investor_flow.DEFAULT_MONTHS) -> None:
     """작업 본체. BackgroundTasks가 스레드풀에서 호출한다. reserve() 이후에만 부른다."""
     # 선점은 엔드포인트에서 이미 끝났다. 여기서는 총 개수만 채운다.
     with _lock:

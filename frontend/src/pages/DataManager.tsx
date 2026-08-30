@@ -524,8 +524,8 @@ export default function DataManager() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
             <span style={{ color: "#64748b", fontSize: 12 }}>
               지수 일괄 수집 {BULK_YEARS}년치 ({bulkStart} ~ {today})
-              <span title="한국 종목은 시세를 받은 뒤 외국인·기관·개인 매매동향 3개월치를 이어서 받습니다. 증권사 API 키가 없으면 건너뜁니다.">
-                {" "}· 국내 종목은 수급 3개월 포함
+              <span title="한국 종목은 시세를 받은 뒤 외국인·기관·개인 매매동향을 같은 5년 구간으로 이어서 받습니다. 처음에는 2시간 이상 걸리고, 두 번째부터는 빠릅니다. 증권사 API 키가 없으면 건너뜁니다.">
+                {" "}· 국내 종목은 수급 포함
               </span>
             </span>
             {universes.map((u) => (

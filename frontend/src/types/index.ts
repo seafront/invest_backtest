@@ -251,12 +251,84 @@ export interface FinancialMetricInfo {
   note: string;
 }
 
+export interface ChartRangeInfo {
+  key: string;
+  label: string;
+  days: number;
+}
+
 export interface IndustryOverview {
   industry: string;
   label: string;
   note: string;
+  chart_range: string;
+  ranges: ChartRangeInfo[];
   metrics: FinancialMetricInfo[];
   groups: ProductGroup[];
+}
+
+export interface PeriodInfo {
+  key: string;
+  label: string;
+  days: number;
+  note: string;
+}
+
+export interface ReportRow {
+  ticker: string;
+  name: string | null;
+  industry: string | null;
+  return_pct: number | null;
+  turnover_ratio: number | null;
+  frgn_ntby_qty: number | null;
+  orgn_ntby_qty: number | null;
+  prsn_ntby_qty: number | null;
+}
+
+export interface Breadth {
+  advancing: number;
+  declining: number;
+  unchanged: number;
+  total: number;
+  median_return: number;
+  above_ma20: number;
+  above_ma20_pct: number;
+  new_high_52w: number;
+  new_low_52w: number;
+}
+
+export interface FlowSection {
+  available: boolean;
+  days: number | null;
+  both_buy_count: number | null;
+  top_foreign: ReportRow[];
+  bottom_foreign: ReportRow[];
+  both_buy: ReportRow[];
+}
+
+export interface SectorRow {
+  industry: string;
+  count: number;
+  median_return: number;
+  prev_median_return: number | null;
+  advancing: number;
+  frgn_ntby: number | null;
+}
+
+export interface ReportResponse {
+  period: string;
+  label: string;
+  note: string;
+  universe: string;
+  as_of: string;
+  base_date: string;
+  trading_days: number;
+  breadth: Breadth;
+  movers: { top: ReportRow[]; bottom: ReportRow[] };
+  turnover_surge: ReportRow[];
+  flows: FlowSection;
+  sectors: SectorRow[];
+  drawdown: { median: number; within_5pct: number; below_20pct: number };
 }
 
 export interface IndicatorSignal {

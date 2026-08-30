@@ -56,7 +56,8 @@ class BulkFetchRequest(BaseModel):
     end_date: date
     # 한국 종목에만 해당한다. 증권사 키가 없으면 무시된다.
     with_flows: bool = True
-    flow_months: int = 3
+    # 시세 구간과 맞춘 5년. 처음 받을 때 오래 걸리지만 재실행은 종목당 1회다.
+    flow_months: int = 60
 
 
 class BulkFetchStatus(BaseModel):
@@ -203,7 +204,7 @@ class InvestorFlowSeries(BaseModel):
 
 
 class InvestorFlowSyncRequest(BaseModel):
-    months: int = 3
+    months: int = 60
 
 
 class ScanRequest(BaseModel):
@@ -390,12 +391,95 @@ class FinancialMetricInfo(BaseModel):
     note: str
 
 
+class ChartRangeInfo(BaseModel):
+    key: str
+    label: str
+    days: int
+
+
 class IndustryOverview(BaseModel):
     industry: str
     label: str
     note: str
+    chart_range: str = "1y"
+    ranges: list[ChartRangeInfo] = []
     metrics: list[FinancialMetricInfo] = []
     groups: list[ProductGroup]
+
+
+class PeriodInfo(BaseModel):
+    key: str
+    label: str
+    days: int
+    note: str
+
+
+class ReportRow(BaseModel):
+    ticker: str
+    name: str | None = None
+    industry: str | None = None
+    return_pct: float | None = None
+    turnover_ratio: float | None = None
+    frgn_ntby_qty: float | None = None
+    orgn_ntby_qty: float | None = None
+    prsn_ntby_qty: float | None = None
+
+
+class Breadth(BaseModel):
+    advancing: int
+    declining: int
+    unchanged: int
+    total: int
+    median_return: float | None
+    above_ma20: int
+    above_ma20_pct: float
+    new_high_52w: int
+    new_low_52w: int
+
+
+class FlowSection(BaseModel):
+    available: bool
+    days: int | None = None
+    both_buy_count: int | None = None
+    top_foreign: list[ReportRow] = []
+    bottom_foreign: list[ReportRow] = []
+    both_buy: list[ReportRow] = []
+
+
+class SectorRow(BaseModel):
+    industry: str
+    count: int
+    median_return: float | None
+    prev_median_return: float | None
+    advancing: int
+    frgn_ntby: int | None
+
+
+class DrawdownSummary(BaseModel):
+    median: float | None
+    within_5pct: int
+    below_20pct: int
+
+
+class Movers(BaseModel):
+    top: list[ReportRow]
+    bottom: list[ReportRow]
+
+
+class ReportResponse(BaseModel):
+    period: str
+    label: str
+    note: str
+    universe: str
+    as_of: date
+    base_date: date
+    trading_days: int
+    breadth: Breadth
+    movers: Movers
+    turnover_surge: list[ReportRow]
+    flows: FlowSection
+    sectors: list[SectorRow]
+    drawdown: DrawdownSummary
 
 
 # --- Macro ---

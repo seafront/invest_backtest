@@ -22,6 +22,8 @@ import type {
   ScanResponse,
   IndustryInfo,
   IndustryOverview,
+  PeriodInfo,
+  ReportResponse,
 } from "../types";
 
 const api = axios.create({
@@ -67,7 +69,7 @@ export const getBulkFetchStatus = () =>
 export const getInvestorFlow = (ticker: string) =>
   api.get<InvestorFlowSeries>(`/stocks/${encodeURIComponent(ticker)}/investor-flow`);
 
-export const syncInvestorFlow = (ticker: string, months = 3) =>
+export const syncInvestorFlow = (ticker: string, months = 60) =>
   api.post<InvestorFlowSeries>(
     `/stocks/${encodeURIComponent(ticker)}/investor-flow/sync`,
     { months }
@@ -128,5 +130,11 @@ export const scanStocks = (req: ScanRequest) =>
 // Industry
 export const listIndustries = () => api.get<IndustryInfo[]>("/industry/");
 
-export const getIndustry = (key: string) =>
-  api.get<IndustryOverview>(`/industry/${encodeURIComponent(key)}`);
+export const getIndustry = (key: string, range = "1y") =>
+  api.get<IndustryOverview>(`/industry/${encodeURIComponent(key)}`, { params: { range } });
+
+// Reports
+export const listPeriods = () => api.get<PeriodInfo[]>("/reports/periods");
+
+export const getReport = (period: string, universe = "kospi200") =>
+  api.get<ReportResponse>(`/reports/${encodeURIComponent(period)}`, { params: { universe } });

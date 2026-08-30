@@ -3,7 +3,7 @@
 종목 하나가 아니라 제품군 안의 경쟁 구도를 본다. 제품군 구분은 데이터가 아니라
 손으로 관리하는 표라 services/industry_groups.py 에 근거를 적어 두었다.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -22,8 +22,9 @@ def list_industries():
 
 
 @router.get("/{industry}", response_model=IndustryOverview)
-def get_industry(industry: str, db: Session = Depends(get_db)):
+def get_industry(industry: str, chart_range: str = Query("1y", alias="range"),
+                 db: Session = Depends(get_db)):
     try:
-        return industry_groups.overview(db, industry)
+        return industry_groups.overview(db, industry, chart_range)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

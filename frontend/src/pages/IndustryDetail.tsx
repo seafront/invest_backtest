@@ -19,7 +19,7 @@ import {
   YAxis,
 } from "recharts";
 import { errMessage } from "../utils/error";
-import { ts, fmtMonth } from "../utils/chart";
+import { ts, axisFormatter } from "../utils/chart";
 import { POSITIVE, NEGATIVE, SERIES_COLORS } from "../theme";
 
 /**
@@ -129,6 +129,8 @@ function Trend({
   if (rows.length === 0) return null;
   const data = rows.map((r) => ({ ...r, t: ts(String(r.date)) }));
   const domain: [number, number] = [data[0].t, data[data.length - 1].t];
+  // 3개월 창에 월 단위 눈금을 쓰면 "2026-06"만 반복된다. 구간 길이에 맞춰 바꾼다.
+  const fmtX = axisFormatter(domain);
 
   return (
     <div style={{ marginBottom: 24 }}>
@@ -139,12 +141,12 @@ function Trend({
           <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
           <XAxis
             dataKey="t" type="number" scale="time" domain={domain}
-            tick={{ fill: MUTED, fontSize: 11 }} tickFormatter={fmtMonth} minTickGap={40}
+            tick={{ fill: MUTED, fontSize: 11 }} tickFormatter={fmtX} minTickGap={40}
           />
           <YAxis width={60} tick={{ fill: MUTED, fontSize: 11 }} tickFormatter={(v) => fmt(Number(v))} />
           <Tooltip
             {...tooltipStyle}
-            labelFormatter={(t) => fmtMonth(Number(t))}
+            labelFormatter={(t) => fmtX(Number(t))}
             formatter={(v, name) => [fmt(Number(v)), String(name)] as [string, string]}
           />
           <Legend wrapperStyle={{ fontSize: 12, color: MUTED }} />
@@ -172,7 +174,7 @@ function Trend({
   );
 }
 
-function Group({ group, metrics }: { group: ProductGroup; metrics: FinancialMetricInfo[] }) {
+function Group({ group, metrics, rangeLabel }: { group: ProductGroup; metrics: FinancialMetricInfo[]; rangeLabel: string }) {
   const [metric, setMetric] = useState(metrics[0]?.key ?? "operating_margin");
   const active = metrics.find((m) => m.key === metric);
 
@@ -193,8 +195,8 @@ function Group({ group, metrics }: { group: ProductGroup; metrics: FinancialMetr
         rows={group.price_series}
         tickers={listed.map((m) => m.ticker)}
         names={shortNames}
-        title="주가 추이 — 1년 전을 100으로 맞춤"
-        note="통화가 달라 종가는 겹칠 수 없지만, 같은 날을 100으로 두면 이후 흐름은 비교된다. 시장별 휴일은 직전 값으로 채웠다."
+        title={`주가 추이 — ${rangeLabel} 전을 100으로 맞춤`}
+        note="통화가 달라 종가는 겹칠 수 없지만, 같은 날을 100으로 두면 이후 흐름은 비교된다. 시장별 휴일은 직전 값으로 채웠다. 구간 시작에 상장돼 있지 않던 종목은 자기 첫 거래일이 기준이다."
         fmt={(n) => n.toFixed(0)}
         baseline={100}
       />
@@ -315,21 +317,24 @@ function Group({ group, metrics }: { group: ProductGroup; metrics: FinancialMetr
 export default function IndustryDetail() {
   // 제품군을 경로에 둔다. 탭 상태를 컴포넌트 안에만 두면 링크로 공유할 수 없다.
   const { key = "", group: groupKey } = useParams();
-  // 응답에 대상 key를 함께 담아, effect 본문에서 초기화용 setState를 하지 않고도
-  // 이전 산업의 결과를 렌더 단계에서 걸러낸다.
+  // 구간은 주가 차트에만 적용된다. 표의 수익률 칸(20일·60일·1년)은 고정이다.
+  const [range, setRange] = useState("1y");
+  // 응답에 요청 조건을 함께 담아, effect 본문에서 초기화용 setState를 하지 않고도
+  // 이전 요청의 결과를 렌더 단계에서 걸러낸다.
   const [state, setState] = useState<{ key: string; data: IndustryOverview | null; error: string } | null>(null);
+  const requestKey = `${key}|${range}`;
 
   useEffect(() => {
     let cancelled = false;
-    getIndustry(key)
-      .then((r) => !cancelled && setState({ key, data: r.data, error: "" }))
-      .catch((e) => !cancelled && setState({ key, data: null, error: errMessage(e) }));
+    getIndustry(key, range)
+      .then((r) => !cancelled && setState({ key: requestKey, data: r.data, error: "" }))
+      .catch((e) => !cancelled && setState({ key: requestKey, data: null, error: errMessage(e) }));
     return () => {
       cancelled = true;
     };
-  }, [key]);
+  }, [key, range, requestKey]);
 
-  const current = state?.key === key ? state : null;
+  const current = state?.key === requestKey ? state : null;
   const data = current?.data ?? null;
   const error = current?.error ?? "";
 
@@ -350,7 +355,30 @@ export default function IndustryDetail() {
   return (
     <div>
       <Link to="/industry" style={{ color: "#3b82f6", fontSize: 14 }}>← Industry</Link>
-      <h2 style={{ color: INK, margin: "12px 0 4px" }}>{data.label} 현황</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <h2 style={{ color: INK, margin: "12px 0 4px" }}>{data.label} 현황</h2>
+        <div style={{ display: "flex", gap: 4 }}>
+          {data.ranges.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              onClick={() => setRange(r.key)}
+              aria-pressed={range === r.key}
+              style={{
+                background: range === r.key ? "#334155" : "transparent",
+                color: range === r.key ? INK : MUTED,
+                border: `1px solid ${GRID}`,
+                borderRadius: 6,
+                padding: "4px 12px",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
       <p style={{ color: MUTED, fontSize: 14, marginBottom: 24 }}>
         {data.note} 제품군 구분은 공개 데이터에 없어 직접 관리하는 표다.
       </p>
@@ -379,7 +407,8 @@ export default function IndustryDetail() {
         })}
       </div>
 
-      <Group key={selected.key} group={selected} metrics={data.metrics} />
+      <Group key={selected.key} group={selected} metrics={data.metrics}
+             rangeLabel={data.ranges.find((r) => r.key === data.chart_range)?.label ?? ""} />
     </div>
   );
 }

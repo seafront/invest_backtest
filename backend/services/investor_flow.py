@@ -13,6 +13,14 @@ from services import kis_client
 
 WINDOW = 30  # API가 한 번에 주는 거래일 수
 
+# 시세와 같은 구간을 담는다. 화면에서 "시세는 5년인데 수급은 3개월"처럼 갈리면
+# 어느 쪽이 기준인지 알 수 없다. KIS는 6년 전까지 돌려주므로 5년은 받아진다.
+#
+# 대신 처음 채울 때가 비싸다. 시세 5년치는 199종목에 40초인데 수급은 2시간 40분이다 —
+# 한 번에 30거래일씩만 주고 호출 사이에 0.6초를 쉬어야 해서, 종목당 42회가 필요하다.
+# 이미 채운 구간을 만나면 즉시 멈추므로 두 번째부터는 종목당 1회로 끝난다.
+DEFAULT_MONTHS = 60
+
 # API 필드 → 컬럼. 이름이 규칙적이라 표로 두면 오타를 눈으로 잡을 수 있다.
 FIELDS = {
     "close": "stck_clpr", "volume": "acml_vol",
@@ -59,7 +67,7 @@ def _row(ticker: str, item: dict) -> dict | None:
     return row
 
 
-def sync(db: Session, ticker: str, months: int = 3) -> dict:
+def sync(db: Session, ticker: str, months: int = DEFAULT_MONTHS) -> dict:
     """months 개월치를 채운다. 이미 있는 날짜는 건너뛴다."""
     if not is_korean(ticker):
         raise ValueError(f"{ticker}: 투자자 매매동향은 한국 종목에만 제공됩니다")
