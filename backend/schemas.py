@@ -71,6 +71,9 @@ class BulkFetchStatus(BaseModel):
     flow_total: int = 0
     flow_done: int = 0
     flow_added: int = 0
+    fund_total: int = 0
+    fund_done: int = 0
+    fund_added: int = 0
     started_at: datetime | None
     finished_at: datetime | None
     error: str | None

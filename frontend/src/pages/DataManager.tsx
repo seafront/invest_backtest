@@ -17,6 +17,7 @@ import {
   listUniverses,
   refreshCachedData,
   startBulkFetch,
+  startBulkFundamentals,
   syncUniverses,
 } from "../api/client";
 import { errMessage } from "../utils/error";
@@ -121,6 +122,19 @@ export default function DataManager() {
       setMessage(`동기화 실패: ${errMessage(e)}`);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleBulkFundamentals = async (universe: string) => {
+    if (starting || bulk?.running) return;
+    setStarting(true);
+    try {
+      const { data } = await startBulkFundamentals(universe);
+      setBulk(data);
+    } catch {
+      /* 진행 중인 작업이 있으면 409. 아래 진행률이 그 작업을 이미 보여준다. */
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -550,6 +564,33 @@ export default function DataManager() {
             ))}
 
             <span style={{ color: "#334155" }}>|</span>
+            <span style={{ color: "#64748b", fontSize: 12 }}>
+              재무만
+              <span title="한국 종목은 한국투자증권에서 분기 30개·연간 23개를, 그 외는 yfinance에서 5개씩 받습니다. 종목당 여섯 번 호출하고 0.6초씩 쉬므로 200종목에 12분쯤 걸립니다.">
+                {" "}(종목당 6호출)
+              </span>
+            </span>
+            {universes.map((u) => (
+              <button
+                key={`fund-${u.key}`}
+                type="button"
+                onClick={() => handleBulkFundamentals(u.key)}
+                disabled={bulk?.running || refreshing || starting}
+                style={{
+                  background: "transparent",
+                  color: bulk?.running || refreshing || starting ? "#64748b" : "#94a3b8",
+                  border: "1px solid #334155",
+                  borderRadius: 6,
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  cursor: bulk?.running || refreshing || starting ? "default" : "pointer",
+                }}
+              >
+                {u.label}
+              </button>
+            ))}
+
+            <span style={{ color: "#334155" }}>|</span>
             <button
               type="button"
               onClick={handleSync}
@@ -572,7 +613,11 @@ export default function DataManager() {
 
         {bulk && (() => {
           const [phaseDone, phaseTotal] =
-            bulk.phase === "flows" ? [bulk.flow_done, bulk.flow_total] : [bulk.done, bulk.total];
+            bulk.phase === "flows"
+              ? [bulk.flow_done, bulk.flow_total]
+              : bulk.phase === "fundamentals"
+                ? [bulk.fund_done, bulk.fund_total]
+                : [bulk.done, bulk.total];
           const progress = phaseTotal > 0 ? phaseDone / phaseTotal : 0;
           return (
           <div style={{ marginBottom: 16 }}>
@@ -581,6 +626,8 @@ export default function DataManager() {
                 {bulk.universe} {bulk.running ? "수집 중" : "수집 완료"}
                 {bulk.phase === "flows" ? (
                   <> · 수급 {bulk.flow_done}/{bulk.flow_total}종목 · 신규 {bulk.flow_added.toLocaleString()}일</>
+                ) : bulk.phase === "fundamentals" || (!bulk.running && bulk.fund_total > 0) ? (
+                  <> · 재무 {bulk.fund_done}/{bulk.fund_total}종목 · 신규 {bulk.fund_added.toLocaleString()}기간</>
                 ) : (
                   <> · 시세 {bulk.done}/{bulk.total}종목 · 신규 {bulk.added.toLocaleString()}행</>
                 )}

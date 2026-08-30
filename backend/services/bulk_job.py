@@ -15,7 +15,7 @@ import yfinance as yf
 
 from database import SessionLocal
 from services.data_fetcher import insert_rows
-from services import investor_flow, kis_client
+from services import fundamentals, investor_flow, kis_client
 
 # 한 번에 요청할 종목 수. 너무 크면 야후가 일부를 조용히 비워서 돌려준다.
 CHUNK = 50
@@ -32,6 +32,9 @@ _job: dict = {
     "flow_total": 0,      # 수급 수집은 시세와 진행률을 따로 센다
     "flow_done": 0,
     "flow_added": 0,
+    "fund_total": 0,      # 재무도 마찬가지. 종목당 호출 수가 달라 시세와 못 합친다
+    "fund_done": 0,
+    "fund_added": 0,
     "started_at": None,
     "finished_at": None,
     "error": None,
@@ -58,6 +61,7 @@ def reserve(universe: str) -> bool:
         _job.update(
             running=True, universe=universe, phase="prices", total=0, done=0, added=0,
             failed=[], flow_total=0, flow_done=0, flow_added=0,
+            fund_total=0, fund_done=0, fund_added=0,
             started_at=datetime.utcnow(), finished_at=None, error=None,
         )
         return True
@@ -115,6 +119,45 @@ def _collect_flows(db, tickers: list[str], months: int) -> None:
         finally:
             with _lock:
                 _job["flow_done"] += 1
+
+
+def _collect_fundamentals(db, tickers: list[str]) -> None:
+    """종목별로 가장 깊은 소스에서 재무를 받는다.
+
+    한국 종목은 KIS가 분기 30개·연간 23개를 주는데, 주기마다 손익·재무상태·재무비율
+    세 번을 호출하므로 종목당 여섯 번이다. 0.6초 간격을 지키면 200종목에 12분쯤
+    걸린다 — 시세(40초)와 같은 진행률에 넣으면 거의 멈춘 것처럼 보인다.
+    """
+    with _lock:
+        _job.update(phase="fundamentals", fund_total=len(tickers))
+
+    for ticker in tickers:
+        try:
+            result = fundamentals.sync_best(db, ticker)
+        except Exception as e:  # noqa: BLE001 - 한 종목이 막혀도 나머지는 계속한다
+            db.rollback()
+            with _lock:
+                _job["failed"].append(f"{ticker} 재무: {str(e)[:80]}")
+        else:
+            with _lock:
+                _job["fund_added"] += result["added"]
+        finally:
+            with _lock:
+                _job["fund_done"] += 1
+
+
+def run_fundamentals(universe: str, tickers: list[str]) -> None:
+    """재무만 받는다. 시세·수급과 달리 따로 부를 일이 많아 진입점을 나눴다."""
+    db = SessionLocal()
+    try:
+        _collect_fundamentals(db, tickers)
+    except Exception as e:  # noqa: BLE001
+        with _lock:
+            _job["error"] = str(e)[:200]
+    finally:
+        db.close()
+        with _lock:
+            _job.update(running=False, phase="", finished_at=datetime.utcnow())
 
 
 def run(universe: str, tickers: list[str], start_date: date, end_date: date,

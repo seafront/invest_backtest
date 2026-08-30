@@ -74,6 +74,9 @@ export interface BulkFetchStatus {
   flow_total: number;
   flow_done: number;
   flow_added: number;
+  fund_total: number;
+  fund_done: number;
+  fund_added: number;
   started_at: string | null;
   finished_at: string | null;
   error: string | null;

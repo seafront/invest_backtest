@@ -63,6 +63,9 @@ export const startBulkFetch = (
   end_date: string
 ) => api.post<BulkFetchStatus>("/stocks/bulk-fetch", { universe, start_date, end_date });
 
+export const startBulkFundamentals = (universe: string) =>
+  api.post<BulkFetchStatus>("/stocks/bulk-fundamentals", null, { params: { universe } });
+
 export const getBulkFetchStatus = () =>
   api.get<BulkFetchStatus>("/stocks/bulk-fetch/status");
 

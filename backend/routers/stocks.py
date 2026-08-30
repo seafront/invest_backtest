@@ -103,6 +103,31 @@ def start_bulk_fetch(req: BulkFetchRequest, background: BackgroundTasks, db: Ses
     return {**bulk_job.status(), "running": True, "universe": req.universe, "total": len(tickers)}
 
 
+@router.post("/bulk-fundamentals", response_model=BulkFetchStatus)
+def start_bulk_fundamentals(universe: str = Query("kospi200"), background: BackgroundTasks = None,
+                            db: Session = Depends(get_db)):
+    """지수 구성종목의 재무를 백그라운드로 받는다.
+
+    시세와 나누어 두는 이유는 비용이 다르기 때문이다. 시세는 한 번에 50종목씩
+    배치로 받아 200종목이 40초면 끝나지만, 재무는 종목마다 여섯 번을 호출하고
+    증권사 유량 제한 때문에 0.6초씩 쉬어야 해서 12분쯤 걸린다.
+    """
+    if universe not in SOURCES:
+        raise HTTPException(status_code=400, detail=f"알 수 없는 유니버스: {universe}")
+    if not bulk_job.reserve(universe):
+        raise HTTPException(status_code=409, detail="이미 진행 중인 작업이 있습니다")
+
+    try:
+        tickers = symbols(universe)
+    except Exception as e:  # noqa: BLE001
+        bulk_job.release(f"구성종목을 받지 못했습니다: {str(e)[:150]}")
+        raise HTTPException(status_code=502, detail=f"구성종목을 받지 못했습니다: {e}")
+
+    background.add_task(bulk_job.run_fundamentals, universe, tickers)
+    return {**bulk_job.status(), "running": True, "universe": universe,
+            "phase": "fundamentals", "fund_total": len(tickers)}
+
+
 @router.get("/bulk-fetch/status", response_model=BulkFetchStatus)
 def bulk_fetch_status():
     return bulk_job.status()
