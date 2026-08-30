@@ -66,13 +66,40 @@ export interface UniverseInfo {
 export interface BulkFetchStatus {
   running: boolean;
   universe: string;
+  phase: string;
   total: number;
   done: number;
   added: number;
   failed: string[];
+  flow_total: number;
+  flow_done: number;
+  flow_added: number;
   started_at: string | null;
   finished_at: string | null;
   error: string | null;
+}
+
+export interface InvestorFlowPoint {
+  date: string;
+  close: number | null;
+  prsn_ntby_qty: number | null;
+  frgn_ntby_qty: number | null;
+  orgn_ntby_qty: number | null;
+  prsn_ntby_amt: number | null;
+  frgn_ntby_amt: number | null;
+  orgn_ntby_amt: number | null;
+  fund_ntby_qty: number | null;
+  ivtr_ntby_qty: number | null;
+  pe_fund_ntby_qty: number | null;
+  scrt_ntby_qty: number | null;
+}
+
+export interface InvestorFlowSeries {
+  ticker: string;
+  count: number;
+  start_date: string | null;
+  end_date: string | null;
+  data: InvestorFlowPoint[];
 }
 
 export interface IndicatorSignal {

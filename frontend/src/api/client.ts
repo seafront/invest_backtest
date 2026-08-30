@@ -4,6 +4,7 @@ import type {
   StockData,
   StockStats,
   StockIndicators,
+  InvestorFlowSeries,
   RefreshResult,
   BulkFetchStatus,
   UniverseInfo,
@@ -57,6 +58,15 @@ export const startBulkFetch = (
 
 export const getBulkFetchStatus = () =>
   api.get<BulkFetchStatus>("/stocks/bulk-fetch/status");
+
+export const getInvestorFlow = (ticker: string) =>
+  api.get<InvestorFlowSeries>(`/stocks/${encodeURIComponent(ticker)}/investor-flow`);
+
+export const syncInvestorFlow = (ticker: string, months = 3) =>
+  api.post<InvestorFlowSeries>(
+    `/stocks/${encodeURIComponent(ticker)}/investor-flow/sync`,
+    { months }
+  );
 
 export const listTickers = () => api.get<TickerInfo[]>("/stocks/");
 

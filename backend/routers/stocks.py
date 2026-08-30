@@ -4,6 +4,8 @@ from database import get_db
 from schemas import (
     BulkFetchRequest,
     BulkFetchStatus,
+    InvestorFlowSeries,
+    InvestorFlowSyncRequest,
     RefreshRequest,
     RefreshResult,
     UniverseInfo,
@@ -22,7 +24,7 @@ from services.data_fetcher import (
 )
 from services.indicators import DEFAULT_RANGE, RANGES, compute_indicators
 from services.market_stats import compute_stats
-from services import bulk_job
+from services import bulk_job, investor_flow
 from services.universe import SOURCES, symbols
 
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
@@ -93,7 +95,8 @@ def start_bulk_fetch(req: BulkFetchRequest, background: BackgroundTasks, db: Ses
         bulk_job.release(f"구성종목을 받지 못했습니다: {str(e)[:150]}")
         raise HTTPException(status_code=502, detail=f"구성종목을 받지 못했습니다: {e}")
 
-    background.add_task(bulk_job.run, req.universe, tickers, req.start_date, req.end_date)
+    background.add_task(bulk_job.run, req.universe, tickers, req.start_date, req.end_date,
+                        req.with_flows, req.flow_months)
     return {**bulk_job.status(), "running": True, "universe": req.universe, "total": len(tickers)}
 
 
@@ -143,6 +146,32 @@ def get_stock_indicators(
         return compute_indicators(df, ticker, series_range)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{ticker}/investor-flow", response_model=InvestorFlowSeries)
+def get_investor_flow(ticker: str, db: Session = Depends(get_db)):
+    """투자자 매매동향(외국인·기관·개인). 한국 종목에만 있다.
+
+    없으면 빈 배열을 돌려준다 — 미국 종목이거나 아직 수집하지 않은 경우다.
+    화면은 그걸 보고 패널을 접는다.
+    """
+    ticker = ticker.upper()
+    rows = investor_flow.get(db, ticker)
+    return {"ticker": ticker, "data": rows, **investor_flow.coverage(db, ticker)}
+
+
+@router.post("/{ticker}/investor-flow/sync", response_model=InvestorFlowSeries)
+def sync_investor_flow(ticker: str, req: InvestorFlowSyncRequest, db: Session = Depends(get_db)):
+    """KIS API로 지정 개월 수만큼 채운다. 한 번에 30거래일씩 거슬러 올라간다."""
+    ticker = ticker.upper()
+    try:
+        investor_flow.sync(db, ticker, req.months)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001 - 증권사 API 오류를 그대로 전달한다
+        raise HTTPException(status_code=502, detail=str(e)[:300])
+    rows = investor_flow.get(db, ticker)
+    return {"ticker": ticker, "data": rows, **investor_flow.coverage(db, ticker)}
 
 
 @router.get("/", response_model=list[TickerInfo])

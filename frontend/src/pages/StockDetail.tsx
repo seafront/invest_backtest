@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import CandlestickChart from "../components/CandlestickChart";
 import IndicatorPanel from "../components/IndicatorPanel";
+import InvestorFlowPanel from "../components/InvestorFlowPanel";
 import MacroStack from "../components/MacroStack";
 import { getStockData, getStockStats } from "../api/client";
 import { errMessage } from "../utils/error";
@@ -134,6 +135,9 @@ export default function StockDetail() {
 
       {/* 파생 지표 — OHLCV에서 계산, 저장하지 않는다. 구간 선택은 패널이 직접 관리한다 */}
       <IndicatorPanel ticker={ticker} />
+
+      {/* 투자자 매매동향 — 한국 종목에만 데이터가 있어 그 외에는 스스로 사라진다 */}
+      <InvestorFlowPanel ticker={ticker} />
 
       {/* 낙폭 */}
       <div style={card}>

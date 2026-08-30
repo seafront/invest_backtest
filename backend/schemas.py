@@ -54,15 +54,22 @@ class BulkFetchRequest(BaseModel):
     universe: str = "sp500"
     start_date: date
     end_date: date
+    # 한국 종목에만 해당한다. 증권사 키가 없으면 무시된다.
+    with_flows: bool = True
+    flow_months: int = 3
 
 
 class BulkFetchStatus(BaseModel):
     running: bool
     universe: str
+    phase: str = ""
     total: int
     done: int
     added: int
     failed: list[str]
+    flow_total: int = 0
+    flow_done: int = 0
+    flow_added: int = 0
     started_at: datetime | None
     finished_at: datetime | None
     error: str | None
@@ -166,6 +173,37 @@ class StockIndicators(BaseModel):
     signals: list[IndicatorSignal]
     series_range: str
     series: list[IndicatorPoint]
+
+
+class InvestorFlowPoint(BaseModel):
+    date: date
+    close: float | None
+    prsn_ntby_qty: int | None
+    frgn_ntby_qty: int | None
+    orgn_ntby_qty: int | None
+    prsn_ntby_amt: float | None
+    frgn_ntby_amt: float | None
+    orgn_ntby_amt: float | None
+    fund_ntby_qty: int | None
+    ivtr_ntby_qty: int | None
+    pe_fund_ntby_qty: int | None
+    scrt_ntby_qty: int | None
+
+    class Config:
+        from_attributes = True
+
+
+class InvestorFlowSeries(BaseModel):
+    """한국 종목 전용. 미국 시장은 투자자 유형별 매매동향을 공개하지 않는다."""
+    ticker: str
+    count: int
+    start_date: date | None
+    end_date: date | None
+    data: list[InvestorFlowPoint]
+
+
+class InvestorFlowSyncRequest(BaseModel):
+    months: int = 3
 
 
 # --- Macro ---

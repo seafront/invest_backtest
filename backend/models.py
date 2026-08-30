@@ -83,6 +83,54 @@ class MacroData(Base):
     __table_args__ = (UniqueConstraint("series_id", "date", name="uq_series_date"),)
 
 
+class InvestorFlow(Base):
+    """종목별·일자별 투자자 매매동향. 한국 종목에만 존재한다.
+
+    미국 시장은 이 데이터를 공개하지 않는다. 반면 한국은 외국인·기관·개인은 물론
+    기관 안에서 연기금·투신·사모까지 나뉘어 나온다 — questions.md의 수급 프롬프트
+    상당수가 이 구분을 전제로 쓰여 있다.
+
+    KIS API는 한 번에 30거래일만 주므로, 종료일을 옮겨가며 받아 여기에 쌓는다.
+    ntby(순매수)만으로는 "순매수는 작지만 양방향 거래가 컸다"를 구분할 수 없어
+    매수·매도도 함께 담는다. 금액 단위는 API가 주는 그대로 백만원이다.
+    """
+    __tablename__ = "investor_flows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True, nullable=False)
+    date = Column(Date, nullable=False)
+
+    close = Column(Float)
+    volume = Column(Integer)
+
+    # 3대 주체 — 순매수 수량/금액, 매수 수량, 매도 수량
+    prsn_ntby_qty = Column(Integer)      # 개인
+    prsn_ntby_amt = Column(Float)
+    prsn_buy_qty = Column(Integer)
+    prsn_sell_qty = Column(Integer)
+
+    frgn_ntby_qty = Column(Integer)      # 외국인
+    frgn_ntby_amt = Column(Float)
+    frgn_buy_qty = Column(Integer)
+    frgn_sell_qty = Column(Integer)
+
+    orgn_ntby_qty = Column(Integer)      # 기관 합계
+    orgn_ntby_amt = Column(Float)
+    orgn_buy_qty = Column(Integer)
+    orgn_sell_qty = Column(Integer)
+
+    # 기관 세부 순매수 수량. "어느 주체가 샀나"를 묻는 프롬프트가 이걸 요구한다.
+    fund_ntby_qty = Column(Integer)      # 연기금
+    ivtr_ntby_qty = Column(Integer)      # 투신
+    pe_fund_ntby_qty = Column(Integer)   # 사모
+    scrt_ntby_qty = Column(Integer)      # 증권(금융투자)
+    bank_ntby_qty = Column(Integer)      # 은행
+    insu_ntby_qty = Column(Integer)      # 보험
+    etc_corp_ntby_qty = Column(Integer)  # 기타법인
+
+    __table_args__ = (UniqueConstraint("ticker", "date", name="uq_flow_ticker_date"),)
+
+
 class Backtest(Base):
     __tablename__ = "backtests"
 

@@ -524,6 +524,9 @@ export default function DataManager() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
             <span style={{ color: "#64748b", fontSize: 12 }}>
               지수 일괄 수집 {BULK_YEARS}년치 ({bulkStart} ~ {today})
+              <span title="한국 종목은 시세를 받은 뒤 외국인·기관·개인 매매동향 3개월치를 이어서 받습니다. 증권사 API 키가 없으면 건너뜁니다.">
+                {" "}· 국내 종목은 수급 3개월 포함
+              </span>
             </span>
             {universes.map((u) => (
               <button
@@ -567,21 +570,30 @@ export default function DataManager() {
           </div>
         )}
 
-        {bulk && (
+        {bulk && (() => {
+          const [phaseDone, phaseTotal] =
+            bulk.phase === "flows" ? [bulk.flow_done, bulk.flow_total] : [bulk.done, bulk.total];
+          const progress = phaseTotal > 0 ? phaseDone / phaseTotal : 0;
+          return (
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
               <span>
-                {bulk.universe} {bulk.running ? "수집 중" : "수집 완료"} · {bulk.done}/{bulk.total}종목 ·
-                신규 {bulk.added.toLocaleString()}행
+                {bulk.universe} {bulk.running ? "수집 중" : "수집 완료"}
+                {bulk.phase === "flows" ? (
+                  <> · 수급 {bulk.flow_done}/{bulk.flow_total}종목 · 신규 {bulk.flow_added.toLocaleString()}일</>
+                ) : (
+                  <> · 시세 {bulk.done}/{bulk.total}종목 · 신규 {bulk.added.toLocaleString()}행</>
+                )}
+                {bulk.flow_added > 0 && bulk.phase !== "flows" && ` · 수급 ${bulk.flow_added.toLocaleString()}일`}
                 {bulk.failed.length > 0 && ` · 실패 ${bulk.failed.length}건`}
               </span>
-              <span>{bulk.total > 0 ? Math.min(100, Math.round((bulk.done / bulk.total) * 100)) : 0}%</span>
+              <span>{Math.min(100, Math.round(progress * 100))}%</span>
             </div>
             <div style={{ height: 6, background: "#0f172a", borderRadius: 3, overflow: "hidden" }}>
               <div
                 style={{
                   height: "100%",
-                  width: `${bulk.total > 0 ? Math.min(100, (bulk.done / bulk.total) * 100) : 0}%`,
+                  width: `${Math.min(100, progress * 100)}%`,
                   background: bulk.running ? "#3b82f6" : "#10b981",
                   transition: "width .3s",
                 }}
@@ -594,7 +606,8 @@ export default function DataManager() {
               </p>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {tickers.length > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
