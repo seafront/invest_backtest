@@ -274,6 +274,12 @@ class FundamentalPoint(BaseModel):
     equity: float | None
     operating_cashflow: float | None
     free_cashflow: float | None
+    # KIS 재무비율에만 있다. yfinance 행에서는 비어 있다.
+    roe: float | None = None
+    eps: float | None = None
+    bps: float | None = None
+    period_type: str = "quarterly"
+    source: str = "yfinance"
 
     class Config:
         from_attributes = True
@@ -284,6 +290,10 @@ class FundamentalSeries(BaseModel):
     count: int
     first_period: date | None
     last_period: date | None
+    # 금액은 실제 단위로 정규화해 내보낸다(억원 → 원). 통화는 상장 시장에서 온다.
+    currency: str = "USD"
+    period_type: str = "quarterly"
+    source: str = "yfinance"
     data: list[FundamentalPoint]
 
 

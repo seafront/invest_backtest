@@ -161,9 +161,23 @@ class Fundamental(Base):
     operating_cashflow = Column(Float)
     free_cashflow = Column(Float)
 
+    # 한국 종목은 KIS가 ROE·EPS·BPS를 직접 준다. 계산하지 않고 그대로 담는다.
+    roe = Column(Float)
+    eps = Column(Float)
+    bps = Column(Float)
+
+    # 어디서 왔고 어떤 단위인지. yfinance는 원·달러 단위로 주고 KIS는 억원 단위라,
+    # 표시하지 않으면 같은 컬럼의 값이 1억 배 어긋난 채 섞인다.
+    source = Column(String, default="yfinance")   # yfinance / kis
+    unit_scale = Column(Float, default=1.0)       # 저장값 × 이 값 = 실제 금액
+    period_type = Column(String, default="quarterly")  # quarterly / annual
+
     updated_at = Column(DateTime, default=datetime.utcnow)
 
-    __table_args__ = (UniqueConstraint("ticker", "period_end", name="uq_fund_ticker_period"),)
+    # 같은 분기라도 분기·연간 보고가 따로 있어 period_type까지 키에 넣는다.
+    __table_args__ = (
+        UniqueConstraint("ticker", "period_end", "period_type", name="uq_fund_ticker_period"),
+    )
 
 
 class Snapshot(Base):

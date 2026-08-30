@@ -168,6 +168,12 @@ export interface FundamentalPoint {
   equity: number | null;
   operating_cashflow: number | null;
   free_cashflow: number | null;
+  /** KIS 재무비율에만 있다. yfinance 행에서는 null. */
+  roe: number | null;
+  eps: number | null;
+  bps: number | null;
+  period_type: string;
+  source: string;
 }
 
 export interface FundamentalSeries {
@@ -175,6 +181,10 @@ export interface FundamentalSeries {
   count: number;
   first_period: string | null;
   last_period: string | null;
+  /** 금액은 서버에서 실제 단위로 맞춰 온다. 통화만 표시에 쓴다. */
+  currency: string;
+  period_type: string;
+  source: string;
   data: FundamentalPoint[];
 }
 

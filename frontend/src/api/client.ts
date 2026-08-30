@@ -75,11 +75,15 @@ export const syncInvestorFlow = (ticker: string, months = 60) =>
     { months }
   );
 
-export const getFundamentals = (ticker: string) =>
-  api.get<FundamentalSeries>(`/stocks/${encodeURIComponent(ticker)}/fundamentals`);
+export const getFundamentals = (ticker: string, periodType: "quarterly" | "annual" = "quarterly") =>
+  api.get<FundamentalSeries>(`/stocks/${encodeURIComponent(ticker)}/fundamentals`, {
+    params: { period_type: periodType },
+  });
 
-export const syncFundamentals = (ticker: string) =>
-  api.post<FundamentalSeries>(`/stocks/${encodeURIComponent(ticker)}/fundamentals/sync`);
+export const syncFundamentals = (ticker: string, periodType: "quarterly" | "annual" = "quarterly") =>
+  api.post<FundamentalSeries>(`/stocks/${encodeURIComponent(ticker)}/fundamentals/sync`, null, {
+    params: { period_type: periodType },
+  });
 
 export const listTickers = () => api.get<TickerInfo[]>("/stocks/");
 

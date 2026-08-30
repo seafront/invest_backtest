@@ -177,24 +177,47 @@ def sync_investor_flow(ticker: str, req: InvestorFlowSyncRequest, db: Session = 
     return {"ticker": ticker, "data": rows, **investor_flow.coverage(db, ticker)}
 
 
+def _fundamental_response(db: Session, ticker: str, period_type: str) -> dict:
+    rows = fundamentals.get(db, ticker, period_type)
+    return {
+        "ticker": ticker,
+        "period_type": period_type,
+        "currency": fundamentals.currency_of(ticker),
+        "source": rows[-1].source if rows else "yfinance",
+        "data": fundamentals.serialize(rows),
+        **fundamentals.coverage(db, ticker, period_type),
+    }
+
+
 @router.get("/{ticker}/fundamentals", response_model=FundamentalSeries)
-def get_fundamentals(ticker: str, db: Session = Depends(get_db)):
-    """분기 재무. 없으면 빈 배열 — 화면이 그걸 보고 수집 버튼을 띄운다."""
-    ticker = ticker.upper()
-    return {"ticker": ticker, "data": fundamentals.get(db, ticker), **fundamentals.coverage(db, ticker)}
+def get_fundamentals(
+    ticker: str,
+    period_type: str = Query("quarterly", pattern="^(quarterly|annual)$"),
+    db: Session = Depends(get_db),
+):
+    """재무. 없으면 빈 배열 — 화면이 그걸 보고 수집 버튼을 띄운다."""
+    return _fundamental_response(db, ticker.upper(), period_type)
 
 
 @router.post("/{ticker}/fundamentals/sync", response_model=FundamentalSeries)
-def sync_fundamentals(ticker: str, db: Session = Depends(get_db)):
-    """yfinance에서 최근 분기들을 받아 저장한다. 호출 3회에 약 2초."""
+def sync_fundamentals(
+    ticker: str,
+    period_type: str = Query("quarterly", pattern="^(quarterly|annual)$"),
+    db: Session = Depends(get_db),
+):
+    """가장 깊은 소스에서 받아 저장한다.
+
+    한국 종목은 KIS(분기 30개·연간 23개), 그 외는 yfinance(분기 5개)다.
+    소스 선택은 서버가 한다 — 화면이 고르게 하면 종목마다 결과가 달라 보인다.
+    """
     ticker = ticker.upper()
     try:
-        fundamentals.sync(db, ticker)
+        fundamentals.sync_best(db, ticker)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(e)[:300])
-    return {"ticker": ticker, "data": fundamentals.get(db, ticker), **fundamentals.coverage(db, ticker)}
+    return _fundamental_response(db, ticker, period_type)
 
 
 @router.get("/{ticker}/snapshots", response_model=SnapshotSeries)

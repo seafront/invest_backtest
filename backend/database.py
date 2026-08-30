@@ -31,6 +31,10 @@ def ensure_columns() -> None:
 
     wanted = {
         "companies": {"sector": "VARCHAR", "industry": "VARCHAR", "industry_krx": "VARCHAR"},
+        "fundamentals": {
+            "roe": "FLOAT", "eps": "FLOAT", "bps": "FLOAT",
+            "source": "VARCHAR", "unit_scale": "FLOAT", "period_type": "VARCHAR",
+        },
     }
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())

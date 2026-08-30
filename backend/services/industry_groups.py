@@ -103,7 +103,9 @@ def _fundamental_metrics(db: Session, tickers: list[str]) -> dict[str, dict]:
     """비율만 낸다. 통화가 달라 금액은 비교 대상이 아니다."""
     rows = (
         db.query(Fundamental)
-        .filter(Fundamental.ticker.in_(tickers))
+        # 연간 행이 섞이면 안 된다. 같은 종목이 분기와 연간을 모두 갖게 되면서
+        # period_end 정렬만으로는 "직전 분기"와 "4분기 전"이 어긋난다.
+        .filter(Fundamental.ticker.in_(tickers), Fundamental.period_type == "quarterly")
         .order_by(Fundamental.ticker, Fundamental.period_end)
         .all()
     )
@@ -268,7 +270,9 @@ def _financial_series(db: Session, tickers: list[str]) -> dict[str, list[dict]]:
     """지표별 분기 시계열. 회사마다 결산월이 달라 각자의 기준일에 점을 찍는다."""
     rows = (
         db.query(Fundamental)
-        .filter(Fundamental.ticker.in_(tickers))
+        # 연간 행이 섞이면 안 된다. 같은 종목이 분기와 연간을 모두 갖게 되면서
+        # period_end 정렬만으로는 "직전 분기"와 "4분기 전"이 어긋난다.
+        .filter(Fundamental.ticker.in_(tickers), Fundamental.period_type == "quarterly")
         .order_by(Fundamental.ticker, Fundamental.period_end)
         .all()
     )
