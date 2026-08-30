@@ -5,6 +5,7 @@ import type {
   StockStats,
   StockIndicators,
   InvestorFlowSeries,
+  FundamentalSeries,
   RefreshResult,
   BulkFetchStatus,
   UniverseInfo,
@@ -17,6 +18,8 @@ import type {
   BacktestSummary,
   MarketCapResult,
   FullScreenResponse,
+  ScanRequest,
+  ScanResponse,
 } from "../types";
 
 const api = axios.create({
@@ -68,6 +71,12 @@ export const syncInvestorFlow = (ticker: string, months = 3) =>
     { months }
   );
 
+export const getFundamentals = (ticker: string) =>
+  api.get<FundamentalSeries>(`/stocks/${encodeURIComponent(ticker)}/fundamentals`);
+
+export const syncFundamentals = (ticker: string) =>
+  api.post<FundamentalSeries>(`/stocks/${encodeURIComponent(ticker)}/fundamentals/sync`);
+
 export const listTickers = () => api.get<TickerInfo[]>("/stocks/");
 
 // Macro (FRED)
@@ -110,3 +119,6 @@ export const fullScreening = (params: {
   end_date?: string;
   initial_capital?: number;
 }) => api.post<FullScreenResponse>("/screening/full", params);
+
+export const scanStocks = (req: ScanRequest) =>
+  api.post<ScanResponse>("/screening/scan", req);

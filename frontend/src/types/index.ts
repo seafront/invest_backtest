@@ -102,6 +102,82 @@ export interface InvestorFlowSeries {
   data: InvestorFlowPoint[];
 }
 
+export interface ScanRequest {
+  universe?: string | null;
+  limit?: number;
+  above_ma20?: boolean;
+  above_ma60?: boolean;
+  turnover_ratio_min?: number | null;
+  disparity_max?: number | null;
+  return_5d_max?: number | null;
+  return_20d_min?: number | null;
+  from_high_min?: number | null;
+  frgn_buy?: boolean;
+  orgn_buy?: boolean;
+  prsn_not_crowded?: boolean;
+  min_turnover?: number | null;
+  sector?: string | null;
+}
+
+export interface ScanStep {
+  key: string;
+  label: string;
+  value: string;
+  passed: number;
+  remaining: number;
+}
+
+export interface ScanRow {
+  ticker: string;
+  name: string | null;
+  sector: string | null;
+  industry: string | null;
+  close: number;
+  date: string;
+  above_ma20: boolean;
+  above_ma60: boolean;
+  disparity_20: number | null;
+  turnover_ratio: number | null;
+  turnover_avg5: number | null;
+  return_5d: number | null;
+  return_20d: number | null;
+  from_high_pct: number | null;
+  frgn_ntby_20d: number | null;
+  orgn_ntby_20d: number | null;
+  prsn_ntby_20d: number | null;
+}
+
+export interface ScanResponse {
+  universe: string | null;
+  total: number;
+  matched: number;
+  funnel: ScanStep[];
+  rows: ScanRow[];
+}
+
+export interface FundamentalPoint {
+  period_end: string;
+  revenue: number | null;
+  gross_profit: number | null;
+  operating_income: number | null;
+  net_income: number | null;
+  inventory: number | null;
+  receivables: number | null;
+  total_assets: number | null;
+  total_debt: number | null;
+  equity: number | null;
+  operating_cashflow: number | null;
+  free_cashflow: number | null;
+}
+
+export interface FundamentalSeries {
+  ticker: string;
+  count: number;
+  first_period: string | null;
+  last_period: string | null;
+  data: FundamentalPoint[];
+}
+
 export interface IndicatorSignal {
   key: string;
   label: string;

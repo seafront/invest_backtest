@@ -4,7 +4,10 @@ from database import get_db
 from schemas import (
     BulkFetchRequest,
     BulkFetchStatus,
+    FundamentalSeries,
     InvestorFlowSeries,
+    SnapshotCaptureRequest,
+    SnapshotSeries,
     InvestorFlowSyncRequest,
     RefreshRequest,
     RefreshResult,
@@ -24,7 +27,7 @@ from services.data_fetcher import (
 )
 from services.indicators import DEFAULT_RANGE, RANGES, compute_indicators
 from services.market_stats import compute_stats
-from services import bulk_job, investor_flow
+from services import bulk_job, fundamentals, investor_flow, snapshots
 from services.universe import SOURCES, symbols
 
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
@@ -172,6 +175,33 @@ def sync_investor_flow(ticker: str, req: InvestorFlowSyncRequest, db: Session = 
         raise HTTPException(status_code=502, detail=str(e)[:300])
     rows = investor_flow.get(db, ticker)
     return {"ticker": ticker, "data": rows, **investor_flow.coverage(db, ticker)}
+
+
+@router.get("/{ticker}/fundamentals", response_model=FundamentalSeries)
+def get_fundamentals(ticker: str, db: Session = Depends(get_db)):
+    """분기 재무. 없으면 빈 배열 — 화면이 그걸 보고 수집 버튼을 띄운다."""
+    ticker = ticker.upper()
+    return {"ticker": ticker, "data": fundamentals.get(db, ticker), **fundamentals.coverage(db, ticker)}
+
+
+@router.post("/{ticker}/fundamentals/sync", response_model=FundamentalSeries)
+def sync_fundamentals(ticker: str, db: Session = Depends(get_db)):
+    """yfinance에서 최근 분기들을 받아 저장한다. 호출 3회에 약 2초."""
+    ticker = ticker.upper()
+    try:
+        fundamentals.sync(db, ticker)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(e)[:300])
+    return {"ticker": ticker, "data": fundamentals.get(db, ticker), **fundamentals.coverage(db, ticker)}
+
+
+@router.get("/{ticker}/snapshots", response_model=SnapshotSeries)
+def get_snapshots(ticker: str, db: Session = Depends(get_db)):
+    """찍어 둔 일별 스냅샷. 쌓기 시작한 날부터만 존재한다."""
+    ticker = ticker.upper()
+    return {"ticker": ticker, "data": snapshots.get(db, ticker), **snapshots.coverage(db, ticker)}
 
 
 @router.get("/", response_model=list[TickerInfo])

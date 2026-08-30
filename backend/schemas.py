@@ -206,6 +206,116 @@ class InvestorFlowSyncRequest(BaseModel):
     months: int = 3
 
 
+class ScanRequest(BaseModel):
+    """스크리너 조건. 값이 None/False 면 그 조건은 끈다."""
+    universe: str | None = None
+    limit: int = 100
+    above_ma20: bool = False
+    above_ma60: bool = False
+    turnover_ratio_min: float | None = None
+    disparity_max: float | None = None
+    return_5d_max: float | None = None
+    return_20d_min: float | None = None
+    from_high_min: float | None = None
+    frgn_buy: bool = False
+    orgn_buy: bool = False
+    prsn_not_crowded: bool = False
+    min_turnover: float | None = None
+    sector: str | None = None
+
+
+class ScanStep(BaseModel):
+    key: str
+    label: str
+    value: str
+    passed: int
+    remaining: int
+
+
+class ScanRow(BaseModel):
+    ticker: str
+    name: str | None
+    sector: str | None
+    industry: str | None
+    close: float
+    date: date
+    above_ma20: bool
+    above_ma60: bool
+    disparity_20: float | None
+    turnover_ratio: float | None
+    turnover_avg5: float | None
+    return_5d: float | None
+    return_20d: float | None
+    from_high_pct: float | None
+    frgn_ntby_20d: int | None
+    orgn_ntby_20d: int | None
+    prsn_ntby_20d: int | None
+
+
+class ScanResponse(BaseModel):
+    universe: str | None
+    total: int
+    matched: int
+    funnel: list[ScanStep]
+    rows: list[ScanRow]
+
+
+class FundamentalPoint(BaseModel):
+    period_end: date
+    revenue: float | None
+    gross_profit: float | None
+    operating_income: float | None
+    net_income: float | None
+    inventory: float | None
+    receivables: float | None
+    total_assets: float | None
+    total_debt: float | None
+    equity: float | None
+    operating_cashflow: float | None
+    free_cashflow: float | None
+
+    class Config:
+        from_attributes = True
+
+
+class FundamentalSeries(BaseModel):
+    ticker: str
+    count: int
+    first_period: date | None
+    last_period: date | None
+    data: list[FundamentalPoint]
+
+
+class SnapshotPoint(BaseModel):
+    date: date
+    close: float | None
+    market_cap: float | None
+    per: float | None
+    pbr: float | None
+    target_mean: float | None
+    target_high: float | None
+    target_low: float | None
+    analyst_count: int | None
+    recommendation: str | None
+
+    class Config:
+        from_attributes = True
+
+
+class SnapshotSeries(BaseModel):
+    ticker: str
+    count: int
+    start_date: date | None
+    end_date: date | None
+    data: list[SnapshotPoint]
+
+
+class SnapshotCaptureRequest(BaseModel):
+    """대상을 고르지 않으면 캐시된 전 종목을 찍는다."""
+    universe: str | None = None
+    tickers: list[str] | None = None
+
+
 # --- Macro ---
 class MacroCatalogItem(BaseModel):
     series_id: str

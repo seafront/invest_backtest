@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import CandlestickChart from "../components/CandlestickChart";
 import IndicatorPanel from "../components/IndicatorPanel";
+import FundamentalPanel from "../components/FundamentalPanel";
 import InvestorFlowPanel from "../components/InvestorFlowPanel";
 import MacroStack from "../components/MacroStack";
 import { getStockData, getStockStats } from "../api/client";
@@ -138,6 +139,9 @@ export default function StockDetail() {
 
       {/* 투자자 매매동향 — 한국 종목에만 데이터가 있어 그 외에는 스스로 사라진다 */}
       <InvestorFlowPanel ticker={ticker} />
+
+      {/* 분기 재무 — 시장과 무관하게 yfinance가 준다 */}
+      <FundamentalPanel ticker={ticker} />
 
       {/* 낙폭 */}
       <div style={card}>

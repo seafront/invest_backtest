@@ -131,6 +131,71 @@ class InvestorFlow(Base):
     __table_args__ = (UniqueConstraint("ticker", "date", name="uq_flow_ticker_date"),)
 
 
+class Fundamental(Base):
+    """분기 재무. yfinance가 최근 5개 분기를 준다.
+
+    매출만 보면 "매출은 느는데 이익이 줄어드는" 구간을 놓친다. 그래서 마진을 낼 수 있는
+    항목을 함께 담는다 — 매출총이익, 영업이익, 재고, 영업활동현금흐름. questions.md
+    6장이 요구하는 "이익의 질"이 이 조합에서 나온다.
+
+    통화는 종목의 상장 시장을 따른다. 삼성전자는 원, 애플은 달러다. 절대액을 시장 간에
+    비교하면 안 되고 증가율·비율로만 봐야 한다.
+    """
+    __tablename__ = "fundamentals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True, nullable=False)
+    period_end = Column(Date, nullable=False)
+
+    revenue = Column(Float)
+    gross_profit = Column(Float)
+    operating_income = Column(Float)
+    net_income = Column(Float)
+
+    inventory = Column(Float)
+    receivables = Column(Float)
+    total_assets = Column(Float)
+    total_debt = Column(Float)
+    equity = Column(Float)
+
+    operating_cashflow = Column(Float)
+    free_cashflow = Column(Float)
+
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("ticker", "period_end", name="uq_fund_ticker_period"),)
+
+
+class Snapshot(Base):
+    """하루 한 장씩 찍어 두는 현재 값.
+
+    시세와 달리 이 값들은 **과거를 받아올 수 없다.** yfinance도 증권사 API도 목표주가와
+    시가총액은 "오늘 얼마"만 알려 주고 어제 얼마였는지는 알려 주지 않는다. 그래서
+    questions.md가 반복해 묻는 "목표가가 상향됐나", "추정치가 올라갔나"는 오늘부터
+    찍어 두지 않으면 영원히 답할 수 없다.
+
+    쌓기 시작한 날부터 시계열이 생긴다. 늦을수록 손해라 다른 수집보다 우선한다.
+    """
+    __tablename__ = "snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True, nullable=False)
+    date = Column(Date, nullable=False)
+
+    close = Column(Float)
+    market_cap = Column(Float)
+    per = Column(Float)
+    pbr = Column(Float)
+
+    target_mean = Column(Float)      # 증권사 목표주가 평균
+    target_high = Column(Float)
+    target_low = Column(Float)
+    analyst_count = Column(Integer)
+    recommendation = Column(String)  # buy / hold / …
+
+    __table_args__ = (UniqueConstraint("ticker", "date", name="uq_snapshot_ticker_date"),)
+
+
 class Backtest(Base):
     __tablename__ = "backtests"
 

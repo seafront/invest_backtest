@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
+from schemas import ScanRequest, ScanResponse
+from services import screener_scan
 from services.screener import screen_by_market_cap, screen_by_strategy, DEFAULT_POOL
 
 router = APIRouter(prefix="/api/screening", tags=["screening"])
@@ -92,3 +94,14 @@ def full_screening(req: FullScreenRequest, db: Session = Depends(get_db)):
         "all_results": strategy_results["all_results"],
         "top_picks": strategy_results["top_picks"],
     }
+
+
+@router.post("/scan", response_model=ScanResponse)
+def scan_stocks(req: ScanRequest, db: Session = Depends(get_db)):
+    """조건으로 종목을 거른다. 백테스트 없이 오늘의 상태만 본다.
+
+    /full 과 목적이 다르다. 그쪽은 전략을 돌려 수익률로 줄을 세우고,
+    이쪽은 questions.md 방식대로 조건의 교집합을 찾는다.
+    """
+    filters = req.model_dump(exclude={"universe", "limit"})
+    return screener_scan.scan(db, req.universe, filters, req.limit)
