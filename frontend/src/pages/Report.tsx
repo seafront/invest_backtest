@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getReport, listPeriods, listUniverses } from "../api/client";
-import type { PeriodInfo, ReportResponse, ReportRow, SectorRow, UniverseInfo } from "../types";
+import { getReport, getSectorTrends, listPeriods, listUniverses } from "../api/client";
+import type {
+  PeriodInfo, ReportResponse, ReportRow, SectorRow, SectorTrendResponse, UniverseInfo,
+} from "../types";
 import { errMessage } from "../utils/error";
 import { POSITIVE, NEGATIVE } from "../theme";
 
@@ -144,8 +146,108 @@ function Sectors({ rows }: { rows: SectorRow[] }) {
   );
 }
 
+/**
+ * 업종을 여섯 구간에 나란히 놓는다.
+ *
+ * 한 구간만 보면 시장을 반대로 읽는다는 것이 이 리포트를 주기별로 나눈 이유인데,
+ * 업종은 한 걸음 더 간다. 1달과 3년의 순위가 뒤집힌 업종이 순환의 한가운데 있는
+ * 업종이고, 나란히 놓지 않으면 그 뒤집힘 자체가 보이지 않는다.
+ *
+ * 칸에 색을 입히되 시장 중앙값을 0으로 삼는다. 5년 수익률은 웬만하면 양수라
+ * 절대값으로 칠하면 표 전체가 초록이 되어 아무것도 구분되지 않는다. 알고 싶은 것은
+ * "올랐나"가 아니라 "시장보다 나았나"다.
+ */
+function SectorTrends({ data }: { data: SectorTrendResponse }) {
+  const { windows, market, sectors } = data;
+
+  // 구간마다 척도를 따로 잡는다. 1달과 5년은 흩어진 폭이 자릿수로 다르므로
+  // 한 척도로 칠하면 짧은 구간이 전부 회색이 된다.
+  //
+  // 최댓값이 아니라 80퍼센타일을 쓴다. 5년 열에는 +3607%짜리가 하나 있는데,
+  // 그것을 척도로 삼으면 +500%도 옅은 색이 되어 열 전체가 비어 보인다. 상위
+  // 20%는 어차피 한계까지 진해지므로 잃는 정보가 없다.
+  const spread: Record<string, number> = {};
+  for (const w of windows) {
+    const diffs = sectors
+      .map((r) => r.returns[w.key])
+      .filter((v): v is number => v !== null && v !== undefined)
+      .map((v) => Math.abs(v - (market[w.key] ?? 0)))
+      .sort((a, b) => a - b);
+    spread[w.key] = diffs.length ? Math.max(diffs[Math.floor(diffs.length * 0.8)], 1) : 1;
+  }
+
+  const cellStyle = (key: string, value: number | null | undefined): React.CSSProperties => {
+    if (value === null || value === undefined) return { color: "#64748b" };
+    const diff = value - (market[key] ?? 0);
+    const weight = Math.min(Math.abs(diff) / spread[key], 1) * 0.35;
+    const rgb = diff >= 0 ? "16,185,129" : "239,68,68";
+    return {
+      color: diff >= 0 ? POSITIVE : NEGATIVE,
+      background: `rgba(${rgb},${weight.toFixed(2)})`,
+      fontWeight: 600,
+    };
+  };
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ borderBottom: `1px solid ${GRID}` }}>
+            <th style={{ color: MUTED, textAlign: "left", padding: "7px 10px", fontWeight: 600 }}>업종</th>
+            <th style={{ color: MUTED, textAlign: "right", padding: "7px 10px", fontWeight: 600 }}>종목</th>
+            {windows.map((w) => (
+              <th key={w.key} title={`${w.base_date} 대비`} style={{
+                color: MUTED, textAlign: "right", padding: "7px 10px",
+                fontWeight: 600, whiteSpace: "nowrap",
+              }}>
+                {w.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr style={{ borderBottom: `1px solid ${GRID}` }}>
+            <td style={{ color: INK, padding: "7px 10px", fontWeight: 600 }}>시장 전체</td>
+            <td style={{ color: MUTED, padding: "7px 10px", textAlign: "right" }}>—</td>
+            {windows.map((w) => (
+              <td key={w.key} style={{
+                color: sign(market[w.key] ?? null), padding: "7px 10px",
+                textAlign: "right", fontWeight: 700,
+              }}>
+                {pct(market[w.key] ?? null, 0)}
+              </td>
+            ))}
+          </tr>
+          {sectors.map((r) => (
+            <tr key={r.industry} style={{ borderBottom: "1px solid #1e293b" }}>
+              <td style={{
+                color: INK, padding: "7px 10px", maxWidth: 220,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {r.industry}
+              </td>
+              <td style={{ color: MUTED, padding: "7px 10px", textAlign: "right" }}>{r.count}</td>
+              {windows.map((w) => (
+                <td key={w.key} style={{
+                  padding: "7px 10px", textAlign: "right", ...cellStyle(w.key, r.returns[w.key]),
+                }}>
+                  {pct(r.returns[w.key] ?? null, 0)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Report() {
   const { universe: universeKey, period: periodKey } = useParams();
+  // 어느 유니버스의 결과인지 함께 들고 있어야 한다. 유니버스를 바꾼 직후에
+  // null로 되돌리면 렌더 중에 상태를 바꾸는 셈이라, 지금 것인지를 읽는 쪽에서 가린다.
+  const [trendState, setTrendState] =
+    useState<{ universe: string; data: SectorTrendResponse | null } | null>(null);
   const [periods, setPeriods] = useState<PeriodInfo[]>([]);
   const [universes, setUniverses] = useState<UniverseInfo[]>([]);
   const [state, setState] = useState<{ key: string; data: ReportResponse | null; error: string } | null>(null);
@@ -169,6 +271,19 @@ export default function Report() {
     };
   }, [key, period, universe]);
 
+  // 주기와 무관하다. 여섯 구간을 한꺼번에 보여주는 표라 daily/weekly를 오갈 때마다
+  // 다시 받을 이유가 없다.
+  useEffect(() => {
+    let cancelled = false;
+    getSectorTrends(universe)
+      .then((r) => !cancelled && setTrendState({ universe, data: r.data }))
+      .catch(() => !cancelled && setTrendState({ universe, data: null }));
+    return () => {
+      cancelled = true;
+    };
+  }, [universe]);
+
+  const trends = trendState?.universe === universe ? trendState.data : null;
   const current = state?.key === key ? state : null;
   const data = current?.data ?? null;
 
@@ -291,6 +406,20 @@ export default function Report() {
             </p>
             <Sectors rows={data.sectors} />
           </div>
+
+          {trends && trends.sectors.length > 0 && (
+            <div style={card}>
+              <h3 style={{ color: INK, margin: "0 0 4px" }}>업종 추세 — 구간별</h3>
+              <p style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>
+                같은 업종을 {trends.windows.map((w) => w.label).join(" · ")} 로 나란히 놓았다.
+                순서는 가장 긴 구간 기준이고, 색은 각 구간의 시장 중앙값 대비 편차다 —
+                5년 수익률은 웬만하면 양수라 절대값으로 칠하면 전부 초록이 된다.
+                1달과 {trends.windows[trends.windows.length - 1]?.label} 의 순위가 뒤집힌 업종이
+                순환의 한가운데 있다. {trends.as_of} 종가 기준.
+              </p>
+              <SectorTrends data={trends} />
+            </div>
+          )}
 
           <div style={card}>
             <h3 style={{ color: INK, margin: "0 0 4px" }}>등락 상·하위</h3>

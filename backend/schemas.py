@@ -468,6 +468,28 @@ class SectorRow(BaseModel):
     frgn_ntby: int | None
 
 
+class TrendWindow(BaseModel):
+    key: str
+    label: str
+    months: int
+    base_date: date
+
+
+class SectorTrendRow(BaseModel):
+    industry: str
+    count: int
+    # 구간 키 -> 중앙 수익률(%). 시세가 모자란 구간은 아예 빠진다.
+    returns: dict[str, float | None]
+
+
+class SectorTrendResponse(BaseModel):
+    universe: str
+    as_of: date
+    windows: list[TrendWindow]
+    market: dict[str, float | None]
+    sectors: list[SectorTrendRow]
+
+
 class DrawdownSummary(BaseModel):
     median: float | None
     within_5pct: int
@@ -498,6 +520,7 @@ class ReportResponse(BaseModel):
 # --- Macro ---
 class MacroCatalogItem(BaseModel):
     series_id: str
+    category: str = "기타"
     name: str
     unit: str
     frequency: str

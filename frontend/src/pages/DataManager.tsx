@@ -61,7 +61,11 @@ export default function DataManager() {
   const [message, setMessage] = useState("");
 
   const [catalog, setCatalog] = useState<MacroCatalogItem[]>([]);
-  const [seriesId, setSeriesId] = useState("");
+  // 어느 지표를 받는 중인지. 버튼마다 상태를 따로 보여줘야 해서 boolean으로는 부족하다.
+  const [fetchingSeries, setFetchingSeries] = useState("");
+  // 설명을 붙일 지표. 버튼 여덟 개에 설명을 모두 달면 격자가 읽히지 않으므로
+  // 가리키는 것 하나만 아래에 펼친다.
+  const [hoverSeries, setHoverSeries] = useState("");
   const [macro, setMacro] = useState<MacroSeriesInfo[]>([]);
 
   // 목록에서 펼쳐 둔 행. 전체 분석은 상세 페이지가 맡고 여기서는 요약만 보여준다.
@@ -173,6 +177,18 @@ export default function DataManager() {
     }
   };
 
+  // 카탈로그를 묶음별로 나눈다. 서버가 category를 주지 않던 시절 응답도 있으므로
+  // 없으면 "기타"로 모은다.
+  const grouped = catalog.reduce<Record<string, MacroCatalogItem[]>>((acc, c) => {
+    const key = c.category ?? "기타";
+    (acc[key] ??= []).push(c);
+    return acc;
+  }, {});
+  // 서버가 준 순서를 그대로 쓰되, 중복은 뺀다.
+  const CATEGORY_ORDER = [...new Set(catalog.map((c) => c.category ?? "기타"))];
+  const cachedIds = new Set(macro.map((m) => m.series_id));
+  const hoverItem = catalog.find((c) => c.series_id === hoverSeries);
+
   const loadMacro = () => {
     listMacroSeries().then((r) => setMacro(r.data));
   };
@@ -180,26 +196,42 @@ export default function DataManager() {
   useEffect(() => {
     loadTickers();
     loadMacro();
-    listMacroCatalog().then((r) => {
-      setCatalog(r.data);
-      setSeriesId((prev) => prev || r.data[0]?.series_id || "");
-    });
+    listMacroCatalog().then((r) => setCatalog(r.data));
   }, []);
 
-  const handleFetchMacro = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!seriesId) return;
-    setLoading(true);
+  const handleFetchMacro = async (id: string) => {
+    if (fetchingSeries) return;
+    setFetchingSeries(id);
     setMessage("");
     try {
-      const res = await fetchMacroSeries(seriesId);
+      const res = await fetchMacroSeries(id);
       setMessage(`${res.data.name} — ${res.data.count.toLocaleString()}개 관측치 저장됨`);
       loadMacro();
     } catch (err: unknown) {
       setMessage(`Error: ${errMessage(err)}`);
     } finally {
-      setLoading(false);
+      setFetchingSeries("");
     }
+  };
+
+  /** 카탈로그 전체를 차례로 받는다. FRED는 키가 없어 병렬로 몰아치지 않는다. */
+  const handleFetchAllMacro = async () => {
+    if (fetchingSeries) return;
+    setMessage("");
+    let saved = 0;
+    for (const item of catalog) {
+      setFetchingSeries(item.series_id);
+      try {
+        const res = await fetchMacroSeries(item.series_id);
+        saved += res.data.count;
+      } catch (err: unknown) {
+        setMessage(`Error: ${item.name} — ${errMessage(err)}`);
+        break;
+      }
+    }
+    setFetchingSeries("");
+    loadMacro();
+    if (saved > 0) setMessage(`${catalog.length}개 지표 · 관측치 ${saved.toLocaleString()}개 저장됨`);
   };
 
   const handleFetch = async (e: React.FormEvent) => {
@@ -303,58 +335,78 @@ export default function DataManager() {
 
       {tab === "macro" ? (
         <>
-          <form
-            onSubmit={handleFetchMacro}
-            style={{
-              background: "#1e1e2e",
-              borderRadius: 8,
-              padding: 24,
-              marginBottom: 24,
-              display: "flex",
-              gap: 12,
-              alignItems: "flex-end",
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 280 }}>
-              <label style={{ color: "#94a3b8", fontSize: 13, display: "block", marginBottom: 4 }}>
-                지표 (FRED)
-              </label>
-              <select
-                value={seriesId}
-                onChange={(e) => setSeriesId(e.target.value)}
-                style={{ ...inputStyle, width: "100%" }}
+          <div style={{ background: "#1e1e2e", borderRadius: 8, padding: 24, marginBottom: 24 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+              <h3 style={{ color: "#e2e8f0", margin: 0 }}>지표 받기</h3>
+              <button
+                type="button"
+                onClick={handleFetchAllMacro}
+                disabled={!!fetchingSeries || catalog.length === 0}
+                style={{
+                  background: "transparent",
+                  color: fetchingSeries ? "#64748b" : "#94a3b8",
+                  border: "1px solid #334155", borderRadius: 6, padding: "6px 14px",
+                  fontSize: 12, cursor: fetchingSeries ? "default" : "pointer",
+                }}
               >
-                {catalog.map((c) => (
-                  <option key={c.series_id} value={c.series_id}>
-                    {c.name} · {c.series_id} ({FREQ_LABEL[c.frequency] ?? c.frequency})
-                  </option>
-                ))}
-              </select>
+                전체 받기 ({catalog.length})
+              </button>
             </div>
-            <button
-              type="submit"
-              disabled={loading || !seriesId}
-              style={{
-                background: loading ? "#334155" : "#3b82f6",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "9px 20px",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: loading ? "wait" : "pointer",
-              }}
-            >
-              {loading ? "받는 중..." : "지표 받기"}
-            </button>
-          </form>
-
-          {catalog.find((c) => c.series_id === seriesId) && (
-            <p style={{ color: "#64748b", fontSize: 13, marginTop: -12, marginBottom: 24 }}>
-              {catalog.find((c) => c.series_id === seriesId)!.description}
+            <p style={{ color: "#64748b", fontSize: 13, margin: "6px 0 16px" }}>
+              FRED는 API 키가 필요 없다. 이미 받은 지표는 다시 눌러 갱신한다.
             </p>
-          )}
+
+            {CATEGORY_ORDER.filter((c) => grouped[c]?.length).map((category) => (
+              <div key={category} style={{ marginBottom: 14 }}>
+                <div style={{ color: "#64748b", fontSize: 12, marginBottom: 6 }}>{category}</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {grouped[category].map((c) => {
+                    const cached = cachedIds.has(c.series_id);
+                    const busy = fetchingSeries === c.series_id;
+                    return (
+                      <button
+                        key={c.series_id}
+                        type="button"
+                        onClick={() => handleFetchMacro(c.series_id)}
+                        onMouseEnter={() => setHoverSeries(c.series_id)}
+                        onMouseLeave={() => setHoverSeries("")}
+                        onFocus={() => setHoverSeries(c.series_id)}
+                        onBlur={() => setHoverSeries("")}
+                        disabled={!!fetchingSeries}
+                        title={c.description}
+                        style={{
+                          background: busy ? "#334155" : "transparent",
+                          // 이미 받은 지표는 테두리를 죽인다. 받아야 할 것이 무엇인지가
+                          // 이 화면에서 알고 싶은 것이지, 무엇을 받았는지가 아니다.
+                          border: `1px solid ${cached ? "#334155" : "#3b82f6"}`,
+                          borderRadius: 6,
+                          padding: "8px 14px",
+                          textAlign: "left",
+                          cursor: fetchingSeries ? "default" : "pointer",
+                          minWidth: 150,
+                        }}
+                      >
+                        <div style={{ color: fetchingSeries && !busy ? "#64748b" : "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
+                          {cached && <span style={{ color: "#10b981" }}>✓ </span>}
+                          {c.name}
+                        </div>
+                        <div style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>
+                          {busy ? "받는 중…" : `${c.series_id} · ${FREQ_LABEL[c.frequency] ?? c.frequency}`}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {hoverItem && (
+              <p style={{ color: "#94a3b8", fontSize: 13, margin: "12px 0 0", minHeight: 20 }}>
+                <span style={{ color: "#e2e8f0" }}>{hoverItem.name}</span> · {hoverItem.unit} —{" "}
+                {hoverItem.description}
+              </p>
+            )}
+          </div>
 
           {message && (
             <div

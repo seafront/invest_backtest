@@ -23,6 +23,18 @@ PERIODS = {
 LOOKBACK = 400  # 52주 고가·저가와 직전 창 비교에 필요한 여유
 TOP_N = 10
 
+# 업종 추세를 볼 구간. 거래일 수가 아니라 달력으로 끊는다 — "1달"을 20거래일로
+# 근사하면 휴장이 몰린 해에 어긋나고, 5년(1260거래일)은 5년치 시세(약 1224거래일)를
+# 넘어서 아예 비어 버린다. 달력으로 잡고 그 이전 마지막 거래일을 쓰면 둘 다 없다.
+TREND_WINDOWS = [
+    {"key": "m1", "label": "1달", "months": 1},
+    {"key": "m3", "label": "3달", "months": 3},
+    {"key": "m6", "label": "6달", "months": 6},
+    {"key": "y1", "label": "1년", "months": 12},
+    {"key": "y3", "label": "3년", "months": 36},
+    {"key": "y5", "label": "5년", "months": 60},
+]
+
 
 def _frames(db: Session, universe: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     prices = pd.read_sql(
@@ -79,6 +91,88 @@ def _rows(frame: pd.DataFrame, meta: pd.DataFrame, value_columns: list[str], n: 
             row[col] = None if pd.isna(value) else round(float(value), 2)
         out.append(row)
     return out
+
+
+def sector_trends(db: Session, universe: str = "kospi200") -> dict:
+    """업종별 수익률을 여섯 구간으로 나란히 낸다.
+
+    한 구간만 보면 시장을 반대로 읽는다는 것이 리포트를 주기별로 나눈 이유인데,
+    업종은 한 걸음 더 나간다. 1달과 3년의 순위가 뒤집히는 업종이 순환의 한가운데
+    있는 업종이다 — 나란히 놓지 않으면 그 뒤집힘 자체가 보이지 않는다.
+
+    중앙값을 쓴다. 업종 안에 대형주 한 종목이 튀면 평균이 그 종목의 수익률이 된다.
+    """
+    prices = pd.read_sql(
+        """
+        select s.ticker, s.date, s.close
+        from stocks s
+        join index_members m on m.ticker = s.ticker and m.universe = :universe
+        """,
+        db.bind, params={"universe": universe}, parse_dates=["date"],
+    )
+    if prices.empty:
+        raise ValueError(f"{universe}: 시세가 없습니다. 먼저 수집하세요.")
+
+    meta = pd.read_sql(
+        """
+        select c.ticker, c.sector, c.industry_krx, c.industry
+        from companies c
+        join index_members m on m.ticker = c.ticker and m.universe = :universe
+        """,
+        db.bind, params={"universe": universe},
+    )
+
+    wide = prices.pivot(index="date", columns="ticker", values="close").sort_index()
+    # build()과 같은 이유로 거래일이 아닌 날짜를 뺀다. 한 종목만 있는 날이 마지막
+    # 행이 되면 나머지 전부의 수익률이 NaN이 된다.
+    wide = wide[wide.notna().sum(axis=1) >= max(1, wide.shape[1] * 0.5)]
+    if wide.empty:
+        raise ValueError(f"{universe}: 거래일이 부족합니다")
+
+    as_of = wide.index[-1]
+    latest = wide.iloc[-1]
+    indexed = meta.set_index("ticker")
+    industry = indexed["sector"].fillna(indexed["industry_krx"]).fillna(indexed["industry"])
+
+    available: list[dict] = []
+    returns: dict[str, pd.Series] = {}
+    for window in TREND_WINDOWS:
+        target = as_of - pd.DateOffset(months=window["months"])
+        earlier = wide.index[wide.index <= target]
+        # 시세가 그만큼 없으면 그 구간은 통째로 뺀다. 있는 것 중 가장 오래된 날로
+        # 대신 계산하면 "5년"이라고 적힌 칸에 3년 수익률이 들어간다.
+        if len(earlier) == 0:
+            continue
+        base_date = earlier[-1]
+        returns[window["key"]] = (latest / wide.loc[base_date] - 1) * 100
+        available.append({**window, "base_date": base_date.date()})
+
+    table = pd.DataFrame(returns)
+    table["industry"] = industry
+    table = table.dropna(subset=["industry"])
+
+    rows: list[dict] = []
+    for name, group in table.groupby("industry"):
+        if len(group) < 2:      # 한 종목뿐인 업종은 업종 흐름이라 부르기 어렵다
+            continue
+        rows.append({
+            "industry": name,
+            "count": int(len(group)),
+            "returns": {w["key"]: _f(group[w["key"]].median()) for w in available},
+        })
+
+    # 가장 긴 구간을 기준으로 세운다. 짧은 구간으로 세우면 이번 달 반등이 순서를
+    # 지배해서 추세를 보려고 만든 표가 다시 한 구간짜리 표가 된다.
+    anchor = available[-1]["key"] if available else None
+    rows.sort(key=lambda r: (r["returns"].get(anchor) if anchor else 0) or -9999, reverse=True)
+
+    return {
+        "universe": universe,
+        "as_of": as_of.date(),
+        "windows": available,
+        "market": {w["key"]: _f(table[w["key"]].median()) for w in available},
+        "sectors": rows,
+    }
 
 
 def build(db: Session, period: str, universe: str = "kospi200") -> dict:

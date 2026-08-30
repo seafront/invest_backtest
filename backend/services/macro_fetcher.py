@@ -17,23 +17,25 @@ from models import MacroData, MacroSeries
 
 FRED_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}"
 
-# 받을 수 있는 지표 목록. 프론트의 드롭다운이 이 카탈로그를 그대로 읽는다.
+# 받을 수 있는 지표 목록. 화면이 이 카탈로그를 그대로 버튼으로 편다.
+# category는 묶음 제목이다. 프론트에서 이름으로 분류하면 지표를 추가할 때마다
+# 양쪽을 고쳐야 하므로, 어디에 속하는지는 목록을 가진 쪽이 정한다.
 CATALOG: list[dict] = [
-    {"series_id": "UNRATE", "name": "실업률", "unit": "%", "frequency": "monthly",
+    {"series_id": "UNRATE", "category": "고용", "name": "실업률", "unit": "%", "frequency": "monthly",
      "description": "16세 이상 실업률. 대표적인 후행 지표로, 주가 저점 이후에 정점을 찍는 경향이 있다."},
-    {"series_id": "PAYEMS", "name": "비농업 고용", "unit": "천 명", "frequency": "monthly",
+    {"series_id": "PAYEMS", "category": "고용", "name": "비농업 고용", "unit": "천 명", "frequency": "monthly",
      "description": "농업을 제외한 전체 고용자 수. 고용은 기업 이익이 회복된 뒤에 늘어난다."},
-    {"series_id": "ICSA", "name": "신규 실업수당 청구", "unit": "건", "frequency": "weekly",
+    {"series_id": "ICSA", "category": "고용", "name": "신규 실업수당 청구", "unit": "건", "frequency": "weekly",
      "description": "주간 신규 청구 건수. 고용 지표 중 가장 빠르게 반응한다."},
-    {"series_id": "FEDFUNDS", "name": "연방기금금리", "unit": "%", "frequency": "monthly",
+    {"series_id": "FEDFUNDS", "category": "금리", "name": "연방기금금리", "unit": "%", "frequency": "monthly",
      "description": "미국 기준금리의 실효 수준."},
-    {"series_id": "DGS10", "name": "국채 10년 금리", "unit": "%", "frequency": "daily",
+    {"series_id": "DGS10", "category": "금리", "name": "국채 10년 금리", "unit": "%", "frequency": "daily",
      "description": "10년 만기 미국 국채 수익률."},
-    {"series_id": "T10Y2Y", "name": "장단기 금리차 (10Y-2Y)", "unit": "%p", "frequency": "daily",
+    {"series_id": "T10Y2Y", "category": "금리", "name": "장단기 금리차 (10Y-2Y)", "unit": "%p", "frequency": "daily",
      "description": "음수면 장단기 금리 역전. 역사적으로 침체에 선행했다."},
-    {"series_id": "CPIAUCSL", "name": "소비자물가지수", "unit": "지수", "frequency": "monthly",
+    {"series_id": "CPIAUCSL", "category": "물가·재정", "name": "소비자물가지수", "unit": "지수", "frequency": "monthly",
      "description": "도시 소비자 기준 CPI. 전년 대비 변화율로 인플레이션을 본다."},
-    {"series_id": "GFDEGDQ188S", "name": "정부부채 / GDP", "unit": "%", "frequency": "quarterly",
+    {"series_id": "GFDEGDQ188S", "category": "물가·재정", "name": "정부부채 / GDP", "unit": "%", "frequency": "quarterly",
      "description": "연방정부 부채의 GDP 대비 비율."},
 ]
 

@@ -21,6 +21,8 @@ export interface TickerInfo {
 
 export interface MacroCatalogItem {
   series_id: string;
+  /** 묶음 제목. 서버가 정한다. 옛 응답에는 없을 수 있어 선택 항목으로 둔다. */
+  category?: string;
   name: string;
   unit: string;
   frequency: string;
@@ -189,6 +191,28 @@ export interface FundamentalSeries {
   period_type: string;
   source: string;
   data: FundamentalPoint[];
+}
+
+export interface TrendWindow {
+  key: string;
+  label: string;
+  months: number;
+  base_date: string;
+}
+
+export interface SectorTrendRow {
+  industry: string;
+  count: number;
+  /** 구간 키 -> 중앙 수익률(%). 시세가 모자란 구간은 키 자체가 없다. */
+  returns: Record<string, number | null>;
+}
+
+export interface SectorTrendResponse {
+  universe: string;
+  as_of: string;
+  windows: TrendWindow[];
+  market: Record<string, number | null>;
+  sectors: SectorTrendRow[];
 }
 
 export interface IndustryInfo {

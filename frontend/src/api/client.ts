@@ -24,6 +24,7 @@ import type {
   IndustryOverview,
   PeriodInfo,
   ReportResponse,
+  SectorTrendResponse,
 } from "../types";
 
 const api = axios.create({
@@ -145,3 +146,6 @@ export const listPeriods = () => api.get<PeriodInfo[]>("/reports/periods");
 
 export const getReport = (period: string, universe = "kospi200") =>
   api.get<ReportResponse>(`/reports/${encodeURIComponent(period)}`, { params: { universe } });
+
+export const getSectorTrends = (universe = "kospi200") =>
+  api.get<SectorTrendResponse>("/reports/sector-trends", { params: { universe } });
