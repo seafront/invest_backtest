@@ -18,10 +18,10 @@ import IndicatorPanel from "../components/IndicatorPanel";
 import FundamentalPanel from "../components/FundamentalPanel";
 import InvestorFlowPanel from "../components/InvestorFlowPanel";
 import MacroStack from "../components/MacroStack";
-import { getStockData, getStockStats } from "../api/client";
+import { getStockData, getStockIndicators, getStockStats } from "../api/client";
 import { errMessage } from "../utils/error";
-import type { StockData, StockStats, YearlyReturn } from "../types";
-import { downsample, ts, fmtMonth, evenTicks } from "../utils/chart";
+import type { StockData, StockIndicators, StockStats, YearlyReturn } from "../types";
+import { downsample, ts, axisFormatter, evenTicks } from "../utils/chart";
 import { POSITIVE, NEGATIVE } from "../theme";
 
 // 상승/하락 대비색. CVD 검증 통과 조합 (deutan ΔE 8.1). 부호는 색 외에
@@ -32,6 +32,17 @@ const MUTED = "#94a3b8";
 const INK = "#e2e8f0";
 const SURFACE = "#1e1e2e";
 const GRID = "#334155";
+
+/** 파생 지표 API가 받는 구간. 페이지 전체가 이 선택을 따른다. */
+const RANGES = [
+  { key: "1m", label: "1달" },
+  { key: "3m", label: "3달" },
+  { key: "6m", label: "6달" },
+  { key: "1y", label: "1년" },
+  { key: "3y", label: "3년" },
+  { key: "5y", label: "5년" },
+  { key: "all", label: "전체" },
+];
 
 const card: React.CSSProperties = {
   background: SURFACE,
@@ -65,6 +76,12 @@ export default function StockDetail() {
   const { ticker = "" } = useParams();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
 
+  // 구간은 페이지가 쥔다. 파생 지표·수급·낙폭·거시 지표가 같은 x축을 쓰려면
+  // 한 곳에서만 정해져야 한다.
+  const [range, setRange] = useState("1y");
+  const [ind, setInd] = useState<{ key: string; data: StockIndicators | null } | null>(null);
+  const indKey = `${ticker}|${range}`;
+
   // loading을 state로 두면 effect 본문에서 동기 setState를 해야 하므로 파생값으로 계산한다.
   const loading = loaded?.ticker !== ticker;
 
@@ -82,6 +99,17 @@ export default function StockDetail() {
     };
   }, [ticker]);
 
+  // 거래일이 20일 미만이면 400이 온다. 카드만 접히고 페이지는 그대로 뜬다.
+  useEffect(() => {
+    let cancelled = false;
+    getStockIndicators(ticker, range)
+      .then((r) => !cancelled && setInd({ key: indKey, data: r.data }))
+      .catch(() => !cancelled && setInd({ key: indKey, data: null }));
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker, range, indKey]);
+
   const stats = loaded?.stats ?? null;
   const ohlcv = loaded?.ohlcv ?? [];
   const error = loaded?.error ?? "";
@@ -98,9 +126,16 @@ export default function StockDetail() {
 
   const sign = (v: number) => (v >= 0 ? UP : DOWN);
 
+  const indicators = ind?.key === indKey ? ind.data : null;
+  // 파생 지표가 거래일 기준으로 자른 구간의 첫 날. 나머지 차트가 이 날짜로 잘라야
+  // 날짜(달력) 기준과 어긋나지 않는다. 지표가 없으면 전체 구간으로 돌아간다.
+  const windowStart = indicators?.series[0]?.date ?? stats.start_date;
+
   // 두 차트가 같은 시간 도메인을 공유해야 x축이 정확히 맞는다.
-  const tDomain: [number, number] = [ts(stats.start_date), ts(stats.end_date)];
-  const ddData = downsample(stats.drawdown_curve).map((d) => ({
+  const tDomain: [number, number] = [ts(windowStart), ts(stats.end_date)];
+  // 구간이 짧으면 월 단위 눈금이 "2026-06"만 반복한다. 파생 지표·산업 화면과 같은 규칙.
+  const fmtX = axisFormatter(tDomain);
+  const ddData = downsample(stats.drawdown_curve.filter((d) => d.date >= windowStart)).map((d) => ({
     t: ts(d.date),
     drawdown: d.drawdown,
   }));
@@ -109,7 +144,30 @@ export default function StockDetail() {
     <div>
       <Link to="/data" style={{ color: "#3b82f6", fontSize: 14 }}>← Data</Link>
 
-      <h2 style={{ color: INK, margin: "12px 0 4px" }}>{stats.ticker}</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <h2 style={{ color: INK, margin: "12px 0 4px" }}>{stats.ticker}</h2>
+        <div style={{ display: "flex", gap: 4 }}>
+          {RANGES.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              onClick={() => setRange(r.key)}
+              aria-pressed={range === r.key}
+              style={{
+                background: range === r.key ? "#334155" : "transparent",
+                color: range === r.key ? INK : MUTED,
+                border: `1px solid ${GRID}`,
+                borderRadius: 6,
+                padding: "4px 12px",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
       <p style={{ color: MUTED, fontSize: 14, marginBottom: 20 }}>
         {stats.start_date} ~ {stats.end_date} · {stats.years}년 · 거래일{" "}
         {stats.trading_days.toLocaleString()}일 · 전략 없이 데이터 자체만 본 결과
@@ -134,11 +192,11 @@ export default function StockDetail() {
       {/* 가격 — CandlestickChart가 자체 카드와 제목을 그리므로 감싸지 않는다 */}
       <CandlestickChart data={ohlcv} />
 
-      {/* 파생 지표 — OHLCV에서 계산, 저장하지 않는다. 구간 선택은 패널이 직접 관리한다 */}
-      <IndicatorPanel ticker={ticker} />
+      {/* 파생 지표 — OHLCV에서 계산, 저장하지 않는다 */}
+      {indicators && <IndicatorPanel ind={indicators} />}
 
       {/* 투자자 매매동향 — 한국 종목에만 데이터가 있어 그 외에는 스스로 사라진다 */}
-      <InvestorFlowPanel ticker={ticker} />
+      <InvestorFlowPanel ticker={ticker} since={windowStart} />
 
       {/* 분기 재무 — 시장과 무관하게 yfinance가 준다 */}
       <FundamentalPanel ticker={ticker} />
@@ -165,13 +223,13 @@ export default function StockDetail() {
               domain={tDomain}
               ticks={evenTicks(tDomain)}
               tick={{ fill: MUTED, fontSize: 11 }}
-              tickFormatter={fmtMonth}
+              tickFormatter={fmtX}
               minTickGap={20}
             />
             <YAxis width={56} tick={{ fill: MUTED, fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
             <Tooltip
               {...tooltipStyle}
-              labelFormatter={(t) => fmtMonth(Number(t))}
+              labelFormatter={(t) => fmtX(Number(t))}
               formatter={(v) => [`${Number(v).toFixed(2)}%`, "Drawdown"] as [string, string]}
             />
             <Area type="monotone"
@@ -185,10 +243,10 @@ export default function StockDetail() {
             두 계열의 교차점을 임의로 만들어 왜곡한다. */}
         <div style={{ borderTop: `1px solid ${GRID}`, marginTop: 16, paddingTop: 16 }}>
           <MacroStack
-            startDate={stats.start_date}
+            startDate={windowStart}
             endDate={stats.end_date}
             tDomain={tDomain}
-            fmtX={fmtMonth}
+            fmtX={fmtX}
           />
         </div>
       </div>

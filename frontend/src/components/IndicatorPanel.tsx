@@ -1,7 +1,4 @@
-import { useEffect, useState } from "react";
-import { getStockIndicators } from "../api/client";
 import type { StockIndicators } from "../types";
-import { errMessage } from "../utils/error";
 import { POSITIVE, NEGATIVE, CAUTION, SERIES_COLORS } from "../theme";
 import { downsample, ts, axisFormatter } from "../utils/chart";
 import ChartRow from "./ChartRow";
@@ -9,7 +6,6 @@ import ChartRow from "./ChartRow";
 const MUTED = "#94a3b8";
 const INK = "#e2e8f0";
 const SURFACE = "#1e1e2e";
-const GRID = "#334155";
 
 const PRICE_LINE = SERIES_COLORS[0];
 const DISPARITY_LINE = SERIES_COLORS[1];
@@ -22,15 +18,6 @@ const DISPARITY_LINES = [
 ]; // 방향에 의미가 있지만 0선으로 구분되므로 중립색
 const TURNOVER_LINE = SERIES_COLORS[2];
 
-const RANGES: { key: string; label: string }[] = [
-  { key: "1m", label: "1달" },
-  { key: "3m", label: "3달" },
-  { key: "6m", label: "6달" },
-  { key: "1y", label: "1년" },
-  { key: "3y", label: "3년" },
-  { key: "5y", label: "5년" },
-  { key: "all", label: "전체" },
-];
 
 // level은 색으로만 전달하지 않는다 — 기호와 문장이 같은 내용을 중복해 담는다.
 const LEVEL: Record<string, { color: string; mark: string }> = {
@@ -71,26 +58,11 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function IndicatorPanel({ ticker }: { ticker: string }) {
-  const [range, setRange] = useState("1y");
-  // 티커를 함께 담아 둔다 — 구간만 바꿀 때는 이전 데이터를 그대로 두어 화면이 깜빡이지 않고,
-  // 티커가 바뀌면 남의 데이터를 그리지 않도록 렌더에서 걸러낸다.
-  const [state, setState] = useState<{ ticker: string; data: StockIndicators | null; error: string } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getStockIndicators(ticker, range)
-      .then((r) => !cancelled && setState({ ticker, data: r.data, error: "" }))
-      .catch((e: unknown) => !cancelled && setState({ ticker, data: null, error: errMessage(e) }));
-    return () => {
-      cancelled = true;
-    };
-  }, [ticker, range]);
-
-  const ind = state?.ticker === ticker ? state.data : null;
-  // 거래일이 20일 미만이면 400이 온다. 카드만 접고 나머지 화면은 그대로 둔다.
-  if (!ind) return null;
-
+/**
+ * 구간은 페이지가 쥔다. 이 카드만 바꿀 수 있으면 아래 수급·낙폭 차트와 x축이 어긋나
+ * "세로로 같은 위치가 같은 시점"이라는 약속이 깨진다.
+ */
+export default function IndicatorPanel({ ind }: { ind: StockIndicators }) {
   const rows = downsample(ind.series).map((p) => ({
     t: ts(p.date),
     close: p.close,
@@ -109,34 +81,11 @@ export default function IndicatorPanel({ ticker }: { ticker: string }) {
 
   return (
     <div style={{ background: SURFACE, borderRadius: 8, padding: 16, marginBottom: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <h3 style={{ color: INK, margin: "0 0 4px" }}>파생 지표 — 지금 어디에 서 있나</h3>
-        <div style={{ display: "flex", gap: 4 }}>
-          {RANGES.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              onClick={() => setRange(r.key)}
-              aria-pressed={range === r.key}
-              style={{
-                background: range === r.key ? "#334155" : "transparent",
-                color: range === r.key ? INK : MUTED,
-                border: `1px solid ${GRID}`,
-                borderRadius: 6,
-                padding: "4px 12px",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <h3 style={{ color: INK, marginBottom: 4 }}>파생 지표 — 지금 어디에 서 있나</h3>
       <p style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>
         {ind.as_of} 종가 기준. 캐시된 OHLCV에서 계산하므로 따로 받아올 데이터가 없다.
         거래대금은 <code style={{ color: "#cbd5e1" }}>종가 × 거래량</code> 근사치라 절대 금액이 아닌 배율로 읽는다.
-        구간 버튼은 아래 차트에만 적용되며, 타일 값은 언제나 마지막 거래일 기준이다.
+        타일 값은 구간과 무관하게 언제나 마지막 거래일 기준이다.
       </p>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>

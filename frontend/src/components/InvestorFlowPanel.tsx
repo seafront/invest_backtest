@@ -57,7 +57,7 @@ function streak(rows: InvestorFlowPoint[], key: ActorKey): number {
   return sign * n;
 }
 
-export default function InvestorFlowPanel({ ticker }: { ticker: string }) {
+export default function InvestorFlowPanel({ ticker, since }: { ticker: string; since?: string }) {
   const [state, setState] = useState<{ ticker: string; data: InvestorFlowSeries | null } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
@@ -89,7 +89,10 @@ export default function InvestorFlowPanel({ ticker }: { ticker: string }) {
     }
   };
 
-  const rows = series.data;
+  // 페이지 구간에 맞춰 자른다. since는 파생 지표가 돌려준 구간 시작일이라,
+  // 자르고 나면 위아래 차트의 x축이 정확히 겹친다.
+  const rows = since ? series.data.filter((p) => p.date >= since) : series.data;
+  if (rows.length === 0) return null;
   const recent = rows.slice(-20);
 
   // 누적선은 구간 시작을 0으로 두고 쌓는다. 절대 보유량이 아니라 이 구간의 방향이다.
@@ -137,7 +140,8 @@ export default function InvestorFlowPanel({ ticker }: { ticker: string }) {
       </div>
       <p style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>
         한국거래소가 공개하는 자료라 국내 종목에만 있다. 단위는 주식 수.
-        {series.start_date && ` 보유 구간 ${series.start_date} ~ ${series.end_date} (${series.count}거래일).`}
+        {` 표시 구간 ${rows[0].date} ~ ${rows[rows.length - 1].date} (${rows.length}거래일).`}
+        {series.count > rows.length && ` 보유 ${series.count}일 중 일부.`}
       </p>
 
       {error && <p style={{ color: NEGATIVE, fontSize: 13 }}>{error}</p>}
