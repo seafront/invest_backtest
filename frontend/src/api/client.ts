@@ -17,6 +17,9 @@ import type {
   AutoBacktestRequest,
   AutoBacktestResponse,
   SimulateRequest,
+  OptimizeGoalInfo,
+  OptimizeRequest,
+  OptimizeJob,
   SimulateResponse,
   BacktestResult,
   BacktestSummary,
@@ -121,6 +124,13 @@ export const runAutoBacktest = (req: AutoBacktestRequest) =>
 
 export const simulateParams = (req: SimulateRequest) =>
   api.post<SimulateResponse>("/backtests/simulate", req);
+
+export const listOptimizeGoals = () => api.get<OptimizeGoalInfo[]>("/backtests/optimize/goals");
+
+export const startOptimize = (req: OptimizeRequest) =>
+  api.post<{ id: string; status: string }>("/backtests/optimize", req);
+
+export const getOptimizeJob = (id: string) => api.get<OptimizeJob>(`/backtests/optimize/${id}`);
 
 export const listBacktests = () =>
   api.get<BacktestSummary[]>("/backtests/");

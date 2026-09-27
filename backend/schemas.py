@@ -672,6 +672,21 @@ class SimulateRequest(BaseModel):
     param_sets: list[dict] = Field(..., min_length=1, max_length=10)
 
 
+class OptimizeRequest(BaseModel):
+    """투자 목표에 맞는 파라미터를 찾는다. 앞 60% 기간으로 고르고 뒤 40%로 검증한다."""
+    ticker: str
+    strategy_name: str
+    start_date: date
+    end_date: date
+    invest_mode: str = "lump_sum"
+    initial_capital: float = 100000.0
+    monthly_contribution: float = 0.0
+    original_params: dict = {}
+    goal: str = "consistency"  # consistency / risk_adjusted / defense / trend / return
+    min_trades: int = Field(1, ge=0, le=50)  # 선택 구간 최소 진입 횟수
+    max_mdd: float | None = Field(None, gt=0, le=100)  # risk_adjusted 전용
+
+
 class TrendRegime(BaseModel):
     start: date
     end: date

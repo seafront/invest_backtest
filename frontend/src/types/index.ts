@@ -597,6 +597,87 @@ export interface AutoStrategyResult {
   regime_returns?: (number | null)[] | null;
 }
 
+// ── 파라미터 최적화 ──
+export type OptimizeGoal = "consistency" | "risk_adjusted" | "defense" | "trend" | "return";
+
+export interface OptimizeGoalInfo {
+  key: OptimizeGoal;
+  label: string;
+  description: string;
+}
+
+export interface OptimizeRequest {
+  ticker: string;
+  strategy_name: string;
+  start_date: string;
+  end_date: string;
+  invest_mode: "lump_sum" | "dca";
+  initial_capital: number;
+  monthly_contribution: number;
+  original_params: Record<string, number>;
+  goal: OptimizeGoal;
+  min_trades?: number;
+  max_mdd?: number | null;
+}
+
+/** 한 구간(선택·검증·전체)의 성과. 입금 효과를 뺀 지수로 잰다. */
+export interface SegmentMetrics {
+  total_return: number;
+  cagr: number;
+  sharpe_ratio: number;
+  max_drawdown: number;
+  trades_count: number;
+  entries: number;
+  win_rate_vs_bh: number | null;
+  median_excess: number | null;
+  up_capture: number | null;
+  down_exposure: number | null;
+  /** 수익(양의 구간 로그수익) 중 가장 큰 한 구간의 비중(%) */
+  concentration: number | null;
+}
+
+export interface OptimizeRow {
+  params: Record<string, number>;
+  in_sample: SegmentMetrics | null;
+  out_of_sample: SegmentMetrics | null;
+  full: SegmentMetrics | null;
+  score_in: number | null;
+  score_out: number | null;
+  /** 주변 조합과 평균낸 선택 구간 점수(고원) */
+  score_robust: number | null;
+  /** 제약을 어겨 추천에서 뺀 사유 */
+  excluded: string | null;
+}
+
+export interface OptimizeResult {
+  goal: OptimizeGoal;
+  goal_label: string;
+  mode: "grid" | "random";
+  evaluated: number;
+  grid_size: number;
+  split_date: string;
+  start_date: string;
+  end_date: string;
+  regime_threshold: number;
+  axes: { name: string; values: number[] }[];
+  benchmark: { in_sample: SegmentMetrics | null; out_of_sample: SegmentMetrics | null };
+  /** 고원 점수 내림차순 */
+  results: OptimizeRow[];
+  recommended: Record<string, number> | null;
+  peak: Record<string, number> | null;
+  original: Record<string, number>;
+  concentration_warn: number;
+}
+
+export interface OptimizeJob {
+  id: string;
+  status: "running" | "done" | "error";
+  done: number;
+  total: number;
+  result: OptimizeResult | null;
+  error: string | null;
+}
+
 /** Buy & Hold 경로를 고점·저점으로 나눈 추세 구간 */
 export interface TrendRegime {
   start: string;

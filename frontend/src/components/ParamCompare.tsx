@@ -8,6 +8,7 @@ import { WINDOW_OPTIONS, rollingVsBenchmark, windowAllowed } from "../utils/roll
 import { fmtParam, paramLabel } from "../utils/params";
 import AutoReturnChart, { BENCHMARK_COLOR, Swatch, type ChartSeries } from "./AutoReturnChart";
 import RegimeTable from "./RegimeTable";
+import ParamOptimizer from "./ParamOptimizer";
 
 const MUTED = "#94a3b8";
 const INK = "#e2e8f0";
@@ -122,24 +123,31 @@ export default function ParamCompare({ result, fromAuto }: Props) {
     return out;
   }, [sim, rows]);
 
-  const draftError = (() => {
+  /** 변형으로 넣을 수 없는 사유. 직접 입력과 "목표에 맞는 값 찾기"가 같은 규칙을 쓴다. */
+  const rejectReason = (params: Record<string, number>): string => {
     for (const p of schema) {
-      const v = draft[p.name];
+      const v = params[p.name];
       if (v === undefined || Number.isNaN(v)) return `${paramLabel(p.name)} 값을 입력하세요`;
       if (v < p.min || v > p.max) return `${paramLabel(p.name)}은(는) ${fmtParam(p.min)}–${fmtParam(p.max)} 범위여야 합니다`;
     }
-    if (sameParams(draft, result.params)) return "원래 결과와 같은 값입니다";
-    if (variants.some((v) => sameParams(v.params, draft))) return "이미 추가한 변형입니다";
-    if (variants.length >= MAX_VARIANTS) return `변형은 최대 ${MAX_VARIANTS}개까지 비교할 수 있습니다`;
+    if (sameParams(params, result.params)) return "원래 결과와 같은 값입니다";
+    if (variants.some((v) => sameParams(v.params, params))) return "이미 추가한 변형입니다";
+    if (variants.length >= MAX_VARIANTS) return `변형은 최대 ${MAX_VARIANTS}개까지 비교할 수 있습니다 — 하나를 삭제하세요`;
     return "";
-  })();
+  };
+  const draftError = rejectReason(draft);
 
-  const addVariant = () => {
-    if (draftError) return;
+  const addParams = (params: Record<string, number>): string | null => {
+    const why = rejectReason(params);
+    if (why) return why;
     const used = new Set([0, ...variants.map((v) => v.color)]);
     const color = [1, 2, 3].find((c) => !used.has(c)) ?? 1;
-    setVariants((prev) => [...prev, { id: nextId, color, params: { ...draft } }]);
+    setVariants((prev) => [...prev, { id: nextId, color, params: { ...params } }]);
     setNextId((n) => n + 1);
+    return null;
+  };
+  const addVariant = () => {
+    addParams(draft);
   };
 
   const saveVariant = async (params: Record<string, number>, key: string) => {
@@ -411,6 +419,8 @@ export default function ParamCompare({ result, fromAuto }: Props) {
           />
         </>
       )}
+
+      <ParamOptimizer result={result} onAdd={addParams} />
     </div>
   );
 }

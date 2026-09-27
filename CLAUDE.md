@@ -80,6 +80,10 @@ BacktestResult · `/strategies` Strategies · `/screener` Screener
 - `POST /stocks/fetch` · `GET /stocks/{ticker}` · `GET /stocks/`
 - `GET /strategies/`
 - `POST /backtests/run` · `GET /backtests/` (last 50) · `GET /backtests/{id}` · `DELETE /backtests/{id}`
+- Not saved: `POST /backtests/auto` (one ticker × all strategies) · `POST /backtests/simulate`
+  (one strategy × param sets, with trend regimes) · `POST /backtests/optimize` → job id,
+  `GET /backtests/optimize/{id}` (goal-based param search, `services/optimizer.py`; in-memory,
+  lost on server restart) · `GET /backtests/optimize/goals`
 - `GET /screening/pool` · `POST /screening/market-cap` · `POST /screening/full`
 
 ## Key conventions & patterns

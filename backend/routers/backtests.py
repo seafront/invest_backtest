@@ -1,3 +1,6 @@
+import threading
+import time
+import uuid
 import logging
 from datetime import date as date_type, timedelta
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,6 +10,7 @@ from models import Backtest, Trade
 from schemas import (
     AutoBacktestRequest,
     AutoBacktestResponse,
+    OptimizeRequest,
     SimulateRequest,
     SimulateResponse,
     BacktestRequest,
@@ -16,7 +20,7 @@ from schemas import (
 from services.data_fetcher import get_cached_data, fetch_and_cache
 from services.backtest_engine import run_backtest, warmup_days
 from services.strategies import get_strategy, list_strategies
-from services import regimes as trend
+from services import curves, optimizer, regimes as trend
 
 logger = logging.getLogger(__name__)
 
@@ -70,44 +74,6 @@ def _load_prices(db: Session, ticker: str, start: date_type, end: date_type):
     return df
 
 
-def _return_curve(equity_curve: list[dict], invest_mode: str,
-                  initial_capital: float, monthly_contribution: float) -> list[dict]:
-    """평가금액 곡선을 누적 수익률(%)로 바꾸고 주 단위로 줄인다.
-
-    적립식은 평가금액에 매달 넣은 돈이 섞여 있어 그대로 그리면 전략과 상관없이
-    모든 선이 우상향한다. 그 시점까지 넣은 원금 대비 수익률로 바꿔야 비교가 된다.
-    원금 계산은 엔진과 같다 — 첫 달에 한 번, 이후 달이 바뀔 때마다 한 번.
-    일별 5년치는 전략 15개면 1만 9천 점이라, 각 주의 마지막 거래일만 남긴다.
-    """
-    out: list[dict] = []
-    invested = initial_capital if invest_mode == "lump_sum" else 0.0
-    last_month = None
-    last_week = None
-    # 입금 효과를 뺀 수익률 지수(시간가중, 시작 1.0). 두 시점의 비율이 곧 그 구간 수익률이라
-    # 롤링 구간 비교에 쓴다. ret은 "그때까지 넣은 원금 대비"라 구간을 자를 수 없다.
-    index, prev_equity = 1.0, None
-    for point in equity_curve:
-        d = date_type.fromisoformat(str(point["date"]))
-        flow = 0.0
-        if invest_mode == "dca" and (d.year, d.month) != last_month:
-            invested += monthly_contribution
-            flow = monthly_contribution if last_month is not None else 0.0
-            last_month = (d.year, d.month)
-        equity = point["equity"]
-        if prev_equity:
-            index *= (equity - flow) / prev_equity
-        prev_equity = equity
-        ret = (equity - invested) / invested * 100 if invested > 0 else 0.0
-        week = d.isocalendar()[:2]
-        row = {"date": d, "ret": round(ret, 2), "idx": round(index, 6)}
-        if week == last_week:
-            out[-1] = row  # 같은 주면 마지막 거래일로 덮는다
-        else:
-            out.append(row)
-            last_week = week
-    return out
-
-
 def _validate_params(strategy, params: dict) -> None:
     for schema in strategy.param_schema:
         name = schema["name"]
@@ -133,7 +99,7 @@ def _summarize(strategy, params: dict, r: dict, invest_mode: str,
         "max_drawdown": r["max_drawdown"],
         "win_rate": r["win_rate"],
         "trades_count": sum(1 for t in r["trades"] if t["action"] == "SELL"),
-        "curve": _return_curve(r["equity_curve"], invest_mode, initial_capital, monthly_contribution),
+        "curve": curves.weekly_curve(r["equity_curve"], invest_mode, initial_capital, monthly_contribution),
         "first_trade": next((t["date"] for t in r["trades"]), None),
     }
 
@@ -346,6 +312,76 @@ def simulate(req: SimulateRequest, db: Session = Depends(get_db)):
         ],
         "regime_threshold": round(threshold * 100, 1),
     }
+
+
+# ── 파라미터 최적화 (백그라운드) ──────────────────────────────────────────────
+# 조합당 0.15초쯤이라 121~400조합이면 20초~1분이 걸린다. 요청을 붙잡지 않고 작업 번호를
+# 돌려준 뒤 화면이 진행률을 폴링한다. 서버 메모리에만 두므로 재시작하면 사라진다.
+_opt_jobs: dict[str, dict] = {}
+_opt_lock = threading.Lock()
+MAX_OPT_JOBS = 20
+
+
+@router.get("/optimize/goals")
+def optimize_goals():
+    return [{"key": k, **v} for k, v in optimizer.GOALS.items()]
+
+
+@router.post("/optimize")
+def start_optimize(req: OptimizeRequest, db: Session = Depends(get_db)):
+    if req.goal not in optimizer.GOALS:
+        raise HTTPException(status_code=400, detail=f"알 수 없는 목표: {req.goal}")
+    try:
+        strategy = get_strategy(req.strategy_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not strategy.param_schema:
+        raise HTTPException(status_code=400, detail="파라미터가 없는 전략입니다")
+    if (req.end_date - req.start_date).days < 365:
+        raise HTTPException(status_code=400, detail="검증 구간을 나누려면 1년 이상이어야 합니다")
+    _validate_params(strategy, req.original_params)
+    _validate_invest(req.invest_mode, req.initial_capital, req.monthly_contribution)
+
+    ticker = req.ticker.strip().upper()
+    # 가장 긴 조합의 준비 구간까지 한 번에 읽는다. 조합마다 필요한 만큼만 잘라 쓴다.
+    longest = {p["name"]: p["max"] for p in strategy.param_schema}
+    df = _load_with_warmup(db, ticker, req.start_date, req.end_date,
+                           warmup_days(strategy.name, longest))
+
+    job_id = uuid.uuid4().hex[:12]
+    job = {"id": job_id, "status": "running", "done": 0, "total": 0, "result": None, "error": None,
+           "created": time.time()}
+    with _opt_lock:
+        if len(_opt_jobs) >= MAX_OPT_JOBS:  # 오래된 것부터 버린다
+            for old in sorted(_opt_jobs.values(), key=lambda j: j["created"])[: len(_opt_jobs) - MAX_OPT_JOBS + 1]:
+                _opt_jobs.pop(old["id"], None)
+        _opt_jobs[job_id] = job
+
+    def progress(done: int, total: int) -> None:
+        job["done"], job["total"] = done, total
+
+    def work() -> None:
+        try:
+            job["result"] = optimizer.optimize(
+                df, strategy.name, req.start_date, req.end_date, req.goal, req.invest_mode,
+                req.initial_capital, req.monthly_contribution, req.original_params,
+                min_trades=req.min_trades, max_mdd=req.max_mdd, progress=progress,
+            )
+            job["status"] = "done"
+        except Exception as e:  # noqa: BLE001 - 실패 사유를 화면에 그대로 보여 준다
+            logger.exception("optimize failed")
+            job["status"], job["error"] = "error", str(e)[:300]
+
+    threading.Thread(target=work, daemon=True).start()
+    return {"id": job_id, "status": "running"}
+
+
+@router.get("/optimize/{job_id}")
+def optimize_status(job_id: str):
+    job = _opt_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="작업이 없습니다 (서버가 재시작됐을 수 있습니다)")
+    return {k: v for k, v in job.items() if k != "created"}
 
 
 @router.get("/", response_model=list[BacktestSummary])
