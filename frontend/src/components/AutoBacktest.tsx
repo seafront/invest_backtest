@@ -11,9 +11,10 @@ import { listStrategies, listTickers, runAutoBacktest, runBacktest } from "../ap
 import { errMessage } from "../utils/error";
 import { POSITIVE, NEGATIVE, SERIES_COLORS } from "../theme";
 import AutoReturnChart, { BENCHMARK_COLOR, Swatch, type ChartSeries } from "./AutoReturnChart";
-import { AMOUNT_DEFAULTS, SYMBOL, currencyOf, fmtMoney } from "../utils/money";
+import { AMOUNT_DEFAULTS, SYMBOL, currencyOf, fmtMoney, type Currency } from "../utils/money";
 import { DEFAULT_TICKER } from "../utils/defaults";
 import { WINDOW_OPTIONS, rollingVsBenchmark, windowAllowed } from "../utils/rolling";
+import { fmtParam, paramLabel } from "../utils/params";
 
 const MUTED = "#94a3b8";
 const INK = "#e2e8f0";
@@ -27,8 +28,6 @@ const BENCHMARK = "buy_and_hold";
 const MAX_PLOTTED = 4;
 const DEFAULT_PLOTTED = 3;
 
-/** 파라미터 값 표기. 2.0 같은 실수는 2로 줄인다. */
-const fmtParam = (v: number) => (Number.isInteger(v) ? String(v) : String(Number(v.toFixed(4))));
 
 /** 표 한 줄. 롤링 지표는 구간 길이에 따라 화면에서 계산하며, B&H 자신은 null이다. */
 type Row = AutoStrategyResult & { roll_win: number | null; roll_excess: number | null };
@@ -60,19 +59,49 @@ const COLUMNS: { key: SortKey; label: string; fmt: (v: number) => string; signed
 ];
 
 /**
+ * 마지막 비교를 탭 세션 동안 보관한다. "상세 보기"로 결과 화면에 갔다가 돌아오면
+ * 이 페이지는 새로 그려지므로, 보관하지 않으면 비교 결과와 켜 둔 선이 모두 사라진다.
+ * 브라우저 저장소는 막혀 있을 수 있어(사생활 보호 모드 등) 읽기·쓰기 모두 실패를 삼킨다.
+ */
+const SESSION_KEY = "autoBacktest:v1";
+
+interface Saved {
+  ticker: string;
+  investMode: "lump_sum" | "dca";
+  amounts: Record<Currency, { capital: number; monthly: number }>;
+  ran: { req: AutoBacktestRequest; res: AutoBacktestResponse } | null;
+  sortKey: SortKey;
+  windowWeeks: number;
+  plotted: Record<string, number>;
+}
+
+function loadSaved(): Partial<Saved> {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as Partial<Saved>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Auto 모드: 한 종목에 등록된 전략 전부를 기본 파라미터로 최근 5년 돌려 비교한다.
  * 결과는 저장하지 않고, "상세 보기"를 누른 전략만 /run 으로 다시 돌려 저장한다.
  */
 export default function AutoBacktest() {
   const navigate = useNavigate();
+  const [saved] = useState(loadSaved);
   const [tickers, setTickers] = useState<TickerInfo[]>([]);
-  const [ticker, setTicker] = useState(DEFAULT_TICKER);
-  const [investMode, setInvestMode] = useState<"lump_sum" | "dca">("lump_sum");
+  const [ticker, setTicker] = useState(saved.ticker ?? DEFAULT_TICKER);
+  const [investMode, setInvestMode] = useState<"lump_sum" | "dca">(saved.investMode ?? "lump_sum");
   // 금액은 통화별로 따로 들고 있는다. 종목을 AAPL ↔ 005930.KS로 바꿔도 각자 입력값이 남는다.
-  const [amounts, setAmounts] = useState(() => ({
-    USD: { capital: AMOUNT_DEFAULTS.USD.capital, monthly: AMOUNT_DEFAULTS.USD.monthly },
-    KRW: { capital: AMOUNT_DEFAULTS.KRW.capital, monthly: AMOUNT_DEFAULTS.KRW.monthly },
-  }));
+  const [amounts, setAmounts] = useState(
+    () =>
+      saved.amounts ?? {
+        USD: { capital: AMOUNT_DEFAULTS.USD.capital, monthly: AMOUNT_DEFAULTS.USD.monthly },
+        KRW: { capital: AMOUNT_DEFAULTS.KRW.capital, monthly: AMOUNT_DEFAULTS.KRW.monthly },
+      }
+  );
   const currency = currencyOf(ticker);
   const unit = AMOUNT_DEFAULTS[currency];
   const capital = amounts[currency].capital;
@@ -85,15 +114,26 @@ export default function AutoBacktest() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   // 표에 보이는 결과를 만든 요청. 상세 보기는 폼이 바뀌었어도 이 조건으로 돌린다.
-  const [ran, setRan] = useState<{ req: AutoBacktestRequest; res: AutoBacktestResponse } | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("roll_win");
-  const [windowWeeks, setWindowWeeks] = useState(52);
+  const [ran, setRan] = useState<{ req: AutoBacktestRequest; res: AutoBacktestResponse } | null>(
+    saved.ran ?? null
+  );
+  const [sortKey, setSortKey] = useState<SortKey>(saved.sortKey ?? "roll_win");
+  const [windowWeeks, setWindowWeeks] = useState(saved.windowWeeks ?? 52);
   const [opening, setOpening] = useState<string | null>(null);
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   // 그래프에 켠 전략 → 색 번호. 색은 순위가 아니라 전략에 붙는다 — 다른 전략을 켜고 꺼도
   // 이미 켜진 선의 색은 바뀌지 않는다.
-  const [plotted, setPlotted] = useState<Record<string, number>>({});
+  const [plotted, setPlotted] = useState<Record<string, number>>(saved.plotted ?? {});
   const [hovered, setHovered] = useState<string | null>(null);
+
+  useEffect(() => {
+    const snapshot: Saved = { ticker, investMode, amounts, ran, sortKey, windowWeeks, plotted };
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(snapshot));
+    } catch {
+      // 저장이 막혀도 화면은 그대로 동작한다. 돌아왔을 때 다시 비교하면 된다.
+    }
+  }, [ticker, investMode, amounts, ran, sortKey, windowWeeks, plotted]);
 
   useEffect(() => {
     listStrategies().then((r) => setStrategies(r.data));
@@ -155,7 +195,8 @@ export default function AutoBacktest() {
         initial_capital: ran.req.initial_capital,
         monthly_contribution: ran.req.monthly_contribution,
       });
-      navigate(`/results/${res.data.id}`, { state: res.data });
+      // fromAuto: 결과 화면이 "전략 비교로 돌아가기"를 보여 줄지 정한다.
+      navigate(`/results/${res.data.id}`, { state: { ...res.data, fromAuto: true } });
     } catch (err: unknown) {
       setError(errMessage(err));
       setOpening(null);
@@ -383,7 +424,7 @@ export default function AutoBacktest() {
               </div>
               {effectiveWeeks ? (
                 <span style={{ color: MUTED, fontSize: 13 }}>
-                  {windowLabel} 구간 {windows}개 중 과반에서 B&H를 이긴 전략:{" "}
+                  {windowLabel}씩 잘라 본 {windows}개 구간 중 절반 넘게 B&H보다 수익이 높았던 전략:{" "}
                   <span style={{ color: beating > 0 ? POSITIVE : INK, fontWeight: 600 }}>
                     {beating} / {ran.res.results.length - 1}
                   </span>
@@ -487,7 +528,7 @@ export default function AutoBacktest() {
                         {r.display_name}
                         {isBenchmark && <span style={{ color: MUTED, fontSize: 11, marginLeft: 6 }}>기준</span>}
                         {beats && (
-                          <span style={{ color: POSITIVE, fontSize: 11, marginLeft: 6 }} title={`${windowLabel} 구간 과반에서 B&H보다 높음`}>
+                          <span style={{ color: POSITIVE, fontSize: 11, marginLeft: 6 }} title={`${windowLabel}씩 잘라 본 구간 중 절반 넘게 B&H보다 수익이 높음`}>
                             ▲ B&H
                           </span>
                         )}
@@ -499,7 +540,7 @@ export default function AutoBacktest() {
                                 return (
                                   <span key={k} title={info?.description}>
                                     {j > 0 && " · "}
-                                    {k.replace(/_/g, " ")} {fmtParam(v)}
+                                    {paramLabel(k)} {fmtParam(v)}
                                   </span>
                                 );
                               })}

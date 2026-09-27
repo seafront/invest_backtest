@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import StrategyForm from "../components/StrategyForm";
 import AutoBacktest from "../components/AutoBacktest";
 import type { BacktestRequest } from "../types";
@@ -7,7 +7,11 @@ import { runBacktest } from "../api/client";
 import { errMessage } from "../utils/error";
 
 export default function BacktestRun() {
-  const [mode, setMode] = useState<"manual" | "auto">("manual");
+  // 모드는 주소(?mode=auto)에 둔다. 결과 화면에서 뒤로 오면 보던 모드가 그대로 열린다.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const mode: "manual" | "auto" = searchParams.get("mode") === "auto" ? "auto" : "manual";
+  const setMode = (m: "manual" | "auto") =>
+    setSearchParams(m === "auto" ? { mode: "auto" } : {}, { replace: true });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
