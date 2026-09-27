@@ -7,13 +7,15 @@ yfinance는 지수 구성종목을 제공하지 않으므로 공개 페이지에
 - S&P 500   : 위키피디아에 구성종목 표가 유지되고 있다.
 - 나스닥 100 : 위키피디아에서 표가 사라져 Slickcharts를 쓴다.
 - 코스피 200 : KRX 공식 API는 로그인을 요구하고(pykrx도 같은 벽에 막힌다),
-              위키피디아에도 목록이 없어 네이버 금융의 편입종목 페이지를 쓴다.
+              위키피디아에도 목록이 없어 한국투자증권이 매일 공개하는 종목
+              마스터 파일의 KOSPI200 편입 플래그를 쓴다. 인증이 필요 없다.
+              (네이버 금융 편입종목 페이지는 2026-09 폐지되어 410을 돌려준다.)
 
 회사 이름도 함께 돌려준다. yfinance의 .info로 받으면 종목당 1초씩 걸리는데,
 구성종목 페이지에는 이름이 이미 들어 있어 추가 요청이 필요 없다.
 """
 import io
-import re
+import zipfile
 from functools import partial
 
 import pandas as pd
@@ -23,9 +25,8 @@ import requests
 HEADERS = {"User-Agent": "BacktestLab/1.0 (educational backtesting app)"}
 TIMEOUT = 30
 
-NAVER_ITEM = re.compile(r'/item/main\.naver\?code=(\d{6})"[^>]*>([^<]+)<')
 KIND_CORP_LIST = "http://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
-NAVER_UPJONG = re.compile(r'sise_group_detail\.naver\?type=upjong&no=(\d+)"[^>]*>([^<]+)<')
+KIS_KOSPI_MASTER = "https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip"
 
 
 def _fetch_table(
@@ -67,32 +68,6 @@ def _fetch_table(
     return out
 
 
-def _naver_upjong_map() -> dict[str, str]:
-    """종목코드 → 네이버 업종명.
-
-    업종 목록(79개)을 받고 각 업종의 편입 종목을 훑는다. 요청이 80회쯤 되지만
-    한 번 받아 두면 되고, 개별 종목 페이지를 199번 도는 것보다 빠르다.
-    네이버 업종명은 GICS 산업 수준 이름을 한글로 옮긴 것이다.
-    """
-    res = requests.get(
-        "https://finance.naver.com/sise/sise_group.naver?type=upjong",
-        headers=HEADERS, timeout=TIMEOUT,
-    )
-    res.raise_for_status()
-    res.encoding = "euc-kr"
-
-    mapping: dict[str, str] = {}
-    for no, upjong in NAVER_UPJONG.findall(res.text):
-        detail = requests.get(
-            f"https://finance.naver.com/sise/sise_group_detail.naver?type=upjong&no={no}",
-            headers=HEADERS, timeout=TIMEOUT,
-        )
-        detail.encoding = "euc-kr"
-        for code, _ in NAVER_ITEM.findall(detail.text):
-            mapping.setdefault(code, upjong.strip())
-    return mapping
-
-
 def _krx_industry_map() -> dict[str, str]:
     """종목코드 → KRX 업종 (통계청 KSIC 기반).
 
@@ -117,33 +92,36 @@ def _krx_industry_map() -> dict[str, str]:
     return out
 
 
-def _fetch_naver_kospi200() -> list[dict]:
-    """네이버 금융 코스피200 편입종목. 표에는 코드가 없어 링크에서 뽑는다."""
-    upjong = _naver_upjong_map()
+def _fetch_kis_kospi200() -> list[dict]:
+    """한국투자증권 코스피 종목 마스터에서 KOSPI200 편입 종목을 뽑는다.
+
+    cp949 고정 길이(한 줄 288바이트) 파일이다. [0:9] 단축코드, [21:61] 한글명,
+    [61:]부터 속성 영역이다. 속성 영역의 +0:2가 그룹코드(주식 'ST'), +18이
+    KOSPI200 섹터업종으로, '0'이나 공백이 아니면 편입 종목이다.
+    KIS 예제 코드는 뒤에서 228바이트를 자르지만 실제 속성 영역은 227바이트라
+    앞에서부터 고정 오프셋으로 읽는다.
+    """
     krx = _krx_industry_map()
+    res = requests.get(KIS_KOSPI_MASTER, headers=HEADERS, timeout=TIMEOUT)
+    res.raise_for_status()
+    with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
+        raw = zf.read(zf.namelist()[0])
+
     out: list[dict] = []
-    seen: set[str] = set()
-    for page in range(1, 25):  # 페이지당 20종목. 여유를 두고 새 종목이 없으면 멈춘다.
-        res = requests.get(
-            f"https://finance.naver.com/sise/entryJongmok.naver?&page={page}",
-            headers=HEADERS, timeout=TIMEOUT,
-        )
-        res.raise_for_status()
-        res.encoding = "euc-kr"
-        fresh = [(c, n.strip()) for c, n in NAVER_ITEM.findall(res.text) if c not in seen]
-        if not fresh:
-            break
-        for code, name in fresh:
-            seen.add(code)
-            out.append({
-                "symbol": f"{code}.KS",  # 야후는 코스피에 .KS 접미사를 쓴다
-                "name": name,
-                # 섹터(GICS 11종)는 비워 둔다. 네이버 업종을 섹터로 올리려면
-                # 79개 한글 이름을 손으로 매핑해야 하고, 그 표는 GICS 개정 때마다 낡는다.
-                "sector": None,
-                "industry": upjong.get(code),
-                "industry_krx": krx.get(code),
-            })
+    for line in raw.splitlines():
+        attrs = line[61:]
+        if attrs[:2] != b"ST" or attrs[18:19] in (b"0", b" ", b""):
+            continue
+        code = line[:9].decode("ascii").strip()
+        out.append({
+            "symbol": f"{code}.KS",  # 야후는 코스피에 .KS 접미사를 쓴다
+            # 이름 칸이 40바이트라 긴 이름은 한글 중간에서 잘릴 수 있다.
+            "name": line[21:61].decode("cp949", errors="ignore").strip(),
+            # 섹터(GICS 11종)는 비워 둔다. 한국 종목의 업종은 KRX 분류가 기준이다.
+            "sector": None,
+            "industry": None,
+            "industry_krx": krx.get(code),
+        })
     return out
 
 
@@ -173,7 +151,7 @@ SOURCES: dict[str, dict] = {
     "kospi200": {
         "label": "코스피 200",
         "min_count": 180,  # 정기 변경 전후로 199~201개를 오간다
-        "fetch": _fetch_naver_kospi200,
+        "fetch": _fetch_kis_kospi200,
     },
 }
 
