@@ -8,6 +8,7 @@ import EquityCurve from "../components/EquityCurve";
 import CandlestickChart from "../components/CandlestickChart";
 import TradeLog from "../components/TradeLog";
 import { NEGATIVE } from "../theme";
+import { currencyOf, fmtMoney } from "../utils/money";
 
 export default function BacktestResult() {
   const { id } = useParams<{ id: string }>();
@@ -74,13 +75,14 @@ export default function BacktestResult() {
       <p style={{ color: "#64748b", marginBottom: 20, fontSize: 14 }}>
         {result.start_date} ~ {result.end_date}
         {(result.invest_mode || "lump_sum") === "dca" ? (
-          <span> · DCA (적립식) Monthly: ${(result.monthly_contribution || 0).toLocaleString()}</span>
+          <span> · DCA (적립식) Monthly: {fmtMoney(result.monthly_contribution || 0, currencyOf(result.ticker))}</span>
         ) : (
-          <span> · Lump Sum (거치식) Initial: ${result.initial_capital.toLocaleString()}</span>
+          <span> · Lump Sum (거치식) Initial: {fmtMoney(result.initial_capital, currencyOf(result.ticker))}</span>
         )}
       </p>
 
       <MetricsPanel
+        currency={currencyOf(result.ticker)}
         totalReturn={result.total_return}
         cagr={result.cagr}
         sharpeRatio={result.sharpe_ratio}
@@ -91,7 +93,7 @@ export default function BacktestResult() {
         monthlyContribution={result.monthly_contribution}
       />
 
-      <EquityCurve data={result.equity_curve} />
+      <EquityCurve data={result.equity_curve} currency={currencyOf(result.ticker)} />
 
       {priceData.length > 0 && (
         <CandlestickChart
@@ -101,7 +103,7 @@ export default function BacktestResult() {
         />
       )}
 
-      <TradeLog trades={result.trades} />
+      <TradeLog trades={result.trades} currency={currencyOf(result.ticker)} />
     </div>
   );
 }

@@ -4,14 +4,112 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Backtest, Trade
-from schemas import BacktestRequest, BacktestResult, BacktestSummary
+from schemas import (
+    AutoBacktestRequest,
+    AutoBacktestResponse,
+    BacktestRequest,
+    BacktestResult,
+    BacktestSummary,
+)
 from services.data_fetcher import get_cached_data, fetch_and_cache
 from services.backtest_engine import run_backtest
-from services.strategies import get_strategy
+from services.strategies import get_strategy, list_strategies
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/backtests", tags=["backtests"])
+
+
+def _validate_invest(invest_mode: str, initial_capital: float, monthly_contribution: float) -> None:
+    if invest_mode not in ("lump_sum", "dca"):
+        raise HTTPException(status_code=400, detail="invest_mode must be 'lump_sum' or 'dca'")
+
+    if invest_mode == "lump_sum" and initial_capital <= 0:
+        raise HTTPException(status_code=400, detail="initial_capital must be positive")
+
+    if invest_mode == "dca" and monthly_contribution <= 0:
+        raise HTTPException(status_code=400, detail="monthly_contribution must be positive for DCA mode")
+
+
+def _load_prices(db: Session, ticker: str, start: date_type, end: date_type):
+    """캐시된 시세를 쓰고, 없거나 요청 시작보다 7일 넘게 늦게 시작하면 yfinance에서 받는다."""
+    try:
+        df = get_cached_data(db, ticker, start, end)
+    except ValueError:
+        df = None
+
+    if df is None or df.empty:
+        # No cached data at all — fetch from yfinance
+        try:
+            fetch_and_cache(db, ticker, start, end)
+            df = get_cached_data(db, ticker, start, end)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to fetch data for {ticker}: {e}")
+    else:
+        # If cached data starts more than 7 days after requested start, re-fetch
+        if df.iloc[0]["date"] > start + timedelta(days=7):
+            try:
+                fetch_and_cache(db, ticker, start, end)
+                df = get_cached_data(db, ticker, start, end)
+            except Exception as e:
+                logger.warning(f"Re-fetch failed for {ticker}, using cached data: {e}")
+
+        # 끝쪽도 본다. 캐시가 오래전에 멈춰 있으면 "최근 5년"이 한 달 전에 끝난다.
+        # 주말·연휴(추석은 사흘)를 감안해 5일까지는 최신으로 본다.
+        cached_end = df.iloc[-1]["date"]
+        if cached_end < end - timedelta(days=5):
+            try:
+                # yfinance의 end는 그날을 포함하지 않는다
+                fetch_and_cache(db, ticker, cached_end + timedelta(days=1), end + timedelta(days=1))
+                df = get_cached_data(db, ticker, start, end)
+            except Exception as e:
+                logger.warning(f"Top-up failed for {ticker}, using data through {cached_end}: {e}")
+    return df
+
+
+def _return_curve(equity_curve: list[dict], invest_mode: str,
+                  initial_capital: float, monthly_contribution: float) -> list[dict]:
+    """평가금액 곡선을 누적 수익률(%)로 바꾸고 주 단위로 줄인다.
+
+    적립식은 평가금액에 매달 넣은 돈이 섞여 있어 그대로 그리면 전략과 상관없이
+    모든 선이 우상향한다. 그 시점까지 넣은 원금 대비 수익률로 바꿔야 비교가 된다.
+    원금 계산은 엔진과 같다 — 첫 달에 한 번, 이후 달이 바뀔 때마다 한 번.
+    일별 5년치는 전략 15개면 1만 9천 점이라, 각 주의 마지막 거래일만 남긴다.
+    """
+    out: list[dict] = []
+    invested = initial_capital if invest_mode == "lump_sum" else 0.0
+    last_month = None
+    last_week = None
+    # 입금 효과를 뺀 수익률 지수(시간가중, 시작 1.0). 두 시점의 비율이 곧 그 구간 수익률이라
+    # 롤링 구간 비교에 쓴다. ret은 "그때까지 넣은 원금 대비"라 구간을 자를 수 없다.
+    index, prev_equity = 1.0, None
+    for point in equity_curve:
+        d = date_type.fromisoformat(str(point["date"]))
+        flow = 0.0
+        if invest_mode == "dca" and (d.year, d.month) != last_month:
+            invested += monthly_contribution
+            flow = monthly_contribution if last_month is not None else 0.0
+            last_month = (d.year, d.month)
+        equity = point["equity"]
+        if prev_equity:
+            index *= (equity - flow) / prev_equity
+        prev_equity = equity
+        ret = (equity - invested) / invested * 100 if invested > 0 else 0.0
+        week = d.isocalendar()[:2]
+        row = {"date": d, "ret": round(ret, 2), "idx": round(index, 6)}
+        if week == last_week:
+            out[-1] = row  # 같은 주면 마지막 거래일로 덮는다
+        else:
+            out.append(row)
+            last_week = week
+    return out
+
+
+def _years_before(d: date_type, years: int) -> date_type:
+    try:
+        return d.replace(year=d.year - years)
+    except ValueError:  # 2월 29일
+        return d.replace(year=d.year - years, day=28)
 
 
 @router.post("/run", response_model=BacktestResult)
@@ -35,39 +133,8 @@ def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
     if req.start_date >= req.end_date:
         raise HTTPException(status_code=400, detail="start_date must be before end_date")
 
-    if req.invest_mode not in ("lump_sum", "dca"):
-        raise HTTPException(status_code=400, detail="invest_mode must be 'lump_sum' or 'dca'")
-
-    if req.invest_mode == "lump_sum" and req.initial_capital <= 0:
-        raise HTTPException(status_code=400, detail="initial_capital must be positive")
-
-    if req.invest_mode == "dca" and req.monthly_contribution <= 0:
-        raise HTTPException(status_code=400, detail="monthly_contribution must be positive for DCA mode")
-
-    # Try cached data first, auto-fetch if missing or incomplete
-    try:
-        df = get_cached_data(db, req.ticker, req.start_date, req.end_date)
-    except ValueError:
-        df = None
-
-    if df is None or df.empty:
-        # No cached data at all — fetch from yfinance
-        try:
-            fetch_and_cache(db, req.ticker, req.start_date, req.end_date)
-            df = get_cached_data(db, req.ticker, req.start_date, req.end_date)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to fetch data for {req.ticker}: {e}")
-    else:
-        # Check if cached data covers the requested range
-        data_start = df.iloc[0]["date"]
-        req_start = req.start_date
-        # If cached data starts more than 7 days after requested start, re-fetch
-        if data_start > req_start + timedelta(days=7):
-            try:
-                fetch_and_cache(db, req.ticker, req.start_date, req.end_date)
-                df = get_cached_data(db, req.ticker, req.start_date, req.end_date)
-            except Exception as e:
-                logger.warning(f"Re-fetch failed for {req.ticker}, using cached data: {e}")
+    _validate_invest(req.invest_mode, req.initial_capital, req.monthly_contribution)
+    df = _load_prices(db, req.ticker, req.start_date, req.end_date)
 
     try:
         result = run_backtest(df, req.strategy_name, req.params, req.initial_capital, req.monthly_contribution, req.invest_mode)
@@ -129,6 +196,62 @@ def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
         "trades": result["trades"],
         "indicators": result["indicators"],
         "created_at": backtest.created_at,
+    }
+
+
+@router.post("/auto", response_model=AutoBacktestResponse)
+def auto_backtest(req: AutoBacktestRequest, db: Session = Depends(get_db)):
+    """한 종목에 등록된 전략 전부를 기본 파라미터로 돌려 비교한다.
+
+    결과는 저장하지 않는다. 전략이 15개라 매번 저장하면 대시보드가 비교용
+    기록으로 가득 차고, 자세히 볼 전략은 /run 으로 다시 돌리면 된다.
+    """
+    _validate_invest(req.invest_mode, req.initial_capital, req.monthly_contribution)
+    ticker = req.ticker.strip().upper()
+    end = date_type.today()
+    start = _years_before(end, req.years)
+    df = _load_prices(db, ticker, start, end)
+    if df is None or len(df) < 2:
+        raise HTTPException(status_code=400, detail=f"{ticker} 시세가 부족합니다")
+
+    results, failed = [], []
+    total_invested = 0.0
+    for strategy in list_strategies():
+        params = {p["name"]: p["default"] for p in strategy.param_schema}
+        try:
+            r = run_backtest(df, strategy.name, params, req.initial_capital,
+                             req.monthly_contribution, req.invest_mode)
+        except Exception as e:  # noqa: BLE001 - 전략 하나가 실패해도 나머지는 비교한다
+            logger.warning(f"Auto backtest failed for {ticker}/{strategy.name}: {e}")
+            failed.append({"strategy_name": strategy.name, "display_name": strategy.display_name,
+                           "error": str(e)[:200]})
+            continue
+        total_invested = r["total_invested"]
+        results.append({
+            "strategy_name": strategy.name,
+            "display_name": strategy.display_name,
+            "params": params,
+            "total_return": r["total_return"],
+            "cagr": r["cagr"],
+            "sharpe_ratio": r["sharpe_ratio"],
+            "max_drawdown": r["max_drawdown"],
+            "win_rate": r["win_rate"],
+            "trades_count": sum(1 for t in r["trades"] if t["action"] == "SELL"),
+            "curve": _return_curve(r["equity_curve"], req.invest_mode,
+                                   req.initial_capital, req.monthly_contribution),
+        })
+
+    results.sort(key=lambda x: x["total_return"], reverse=True)
+    return {
+        "ticker": ticker,
+        "start_date": start,
+        "end_date": end,
+        "data_start": df.iloc[0]["date"],
+        "data_end": df.iloc[-1]["date"],
+        "invest_mode": req.invest_mode,
+        "total_invested": total_invested,
+        "results": results,
+        "failed": failed,
     }
 
 

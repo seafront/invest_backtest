@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import StrategyForm from "../components/StrategyForm";
+import AutoBacktest from "../components/AutoBacktest";
 import type { BacktestRequest } from "../types";
 import { runBacktest } from "../api/client";
 import { errMessage } from "../utils/error";
 
 export default function BacktestRun() {
+  const [mode, setMode] = useState<"manual" | "auto">("manual");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -25,11 +27,38 @@ export default function BacktestRun() {
 
   return (
     <div>
-      <h2 style={{ color: "#e2e8f0", marginBottom: 20 }}>Run Backtest</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+        <h2 style={{ color: "#e2e8f0", margin: 0 }}>Run Backtest</h2>
+        <div style={{ display: "flex", background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: 3 }}>
+          {(["manual", "auto"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              style={{
+                background: mode === m ? "#3b82f6" : "transparent",
+                color: mode === m ? "#fff" : "#94a3b8",
+                border: "none",
+                borderRadius: 6,
+                padding: "6px 16px",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {m === "manual" ? "Manual" : "Auto"}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <StrategyForm onSubmit={handleSubmit} loading={loading} />
+      {mode === "auto" ? (
+        <AutoBacktest />
+      ) : (
+        <StrategyForm onSubmit={handleSubmit} loading={loading} />
+      )}
 
-      {error && (
+      {mode === "manual" && error && (
         <div
           style={{
             background: "#7f1d1d",

@@ -14,6 +14,8 @@ import type {
   MacroSeriesDetail,
   StrategyInfo,
   BacktestRequest,
+  AutoBacktestRequest,
+  AutoBacktestResponse,
   BacktestResult,
   BacktestSummary,
   MarketCapResult,
@@ -111,6 +113,9 @@ export const listStrategies = () => api.get<StrategyInfo[]>("/strategies/");
 // Backtests
 export const runBacktest = (req: BacktestRequest) =>
   api.post<BacktestResult>("/backtests/run", req);
+
+export const runAutoBacktest = (req: AutoBacktestRequest) =>
+  api.post<AutoBacktestResponse>("/backtests/auto", req);
 
 export const listBacktests = () =>
   api.get<BacktestSummary[]>("/backtests/");

@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import type { StrategyInfo, TickerInfo, BacktestRequest } from "../types";
 import { listStrategies, listTickers } from "../api/client";
+import { isoDay, yearsAgo } from "../utils/date";
+import { AMOUNT_DEFAULTS, SYMBOL, currencyOf } from "../utils/money";
+import { DEFAULT_TICKER } from "../utils/defaults";
 
 interface Props {
   onSubmit: (req: BacktestRequest) => void;
@@ -11,13 +14,25 @@ export default function StrategyForm({ onSubmit, loading }: Props) {
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [tickers, setTickers] = useState<TickerInfo[]>([]);
   const [selectedStrategy, setSelectedStrategy] = useState("");
-  const [ticker, setTicker] = useState("");
+  const [ticker, setTicker] = useState(DEFAULT_TICKER);
   const [params, setParams] = useState<Record<string, number>>({});
-  const [startDate, setStartDate] = useState("2022-01-01");
-  const [endDate, setEndDate] = useState("2024-12-31");
+  // 기본 구간은 폼을 열 때 기준 최근 5년이다.
+  const [startDate, setStartDate] = useState(() => yearsAgo(5));
+  const [endDate, setEndDate] = useState(() => isoDay(new Date()));
   const [investMode, setInvestMode] = useState<"lump_sum" | "dca">("lump_sum");
-  const [capital, setCapital] = useState(100000);
-  const [monthlyContribution, setMonthlyContribution] = useState(1000);
+  // 금액은 통화별로 따로 들고 있는다. 종목을 AAPL ↔ 005930.KS로 바꿔도 각자 입력값이 남는다.
+  const [amounts, setAmounts] = useState(() => ({
+    USD: { capital: AMOUNT_DEFAULTS.USD.capital, monthly: AMOUNT_DEFAULTS.USD.monthly },
+    KRW: { capital: AMOUNT_DEFAULTS.KRW.capital, monthly: AMOUNT_DEFAULTS.KRW.monthly },
+  }));
+  const currency = currencyOf(ticker);
+  const unit = AMOUNT_DEFAULTS[currency];
+  const capital = amounts[currency].capital;
+  const monthlyContribution = amounts[currency].monthly;
+  const setCapital = (v: number) =>
+    setAmounts((prev) => ({ ...prev, [currency]: { ...prev[currency], capital: v } }));
+  const setMonthlyContribution = (v: number) =>
+    setAmounts((prev) => ({ ...prev, [currency]: { ...prev[currency], monthly: v } }));
 
   useEffect(() => {
     listStrategies().then((r) => {
@@ -31,7 +46,6 @@ export default function StrategyForm({ onSubmit, loading }: Props) {
     });
     listTickers().then((r) => {
       setTickers(r.data);
-      if (r.data.length > 0) setTicker(r.data[0].ticker);
     });
   }, []);
 
@@ -171,13 +185,13 @@ export default function StrategyForm({ onSubmit, loading }: Props) {
 
         {investMode === "lump_sum" ? (
           <div>
-            <label style={labelStyle}>Initial Capital ($)</label>
+            <label style={labelStyle}>Initial Capital ({SYMBOL[currency]})</label>
             <input
               type="number"
               value={capital}
               onChange={(e) => setCapital(Number(e.target.value))}
-              min={1000}
-              step={1000}
+              min={unit.capitalMin}
+              step={unit.capitalStep}
               style={inputStyle}
             />
             <p style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
@@ -186,13 +200,13 @@ export default function StrategyForm({ onSubmit, loading }: Props) {
           </div>
         ) : (
           <div>
-            <label style={labelStyle}>Monthly Contribution ($)</label>
+            <label style={labelStyle}>Monthly Contribution ({SYMBOL[currency]})</label>
             <input
               type="number"
               value={monthlyContribution}
               onChange={(e) => setMonthlyContribution(Number(e.target.value))}
-              min={100}
-              step={100}
+              min={unit.monthlyMin}
+              step={unit.monthlyStep}
               style={inputStyle}
             />
             <p style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>

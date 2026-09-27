@@ -8,12 +8,14 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { EquityPoint } from "../types";
+import { fmtMoney, fmtMoneyShort, type Currency } from "../utils/money";
 
 interface Props {
   data: EquityPoint[];
+  currency: Currency;
 }
 
-export default function EquityCurve({ data }: Props) {
+export default function EquityCurve({ data, currency }: Props) {
   const formatted = data
     .filter((_, i) => i % Math.max(1, Math.floor(data.length / 500)) === 0 || i === data.length - 1)
     .map((d) => ({
@@ -34,13 +36,13 @@ export default function EquityCurve({ data }: Props) {
           />
           <YAxis
             tick={{ fill: "#94a3b8", fontSize: 11 }}
-            tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+            tickFormatter={(v) => fmtMoneyShort(v, currency)}
           />
           <Tooltip
             contentStyle={{ background: "#0f172a", border: "1px solid #334155" }}
             labelStyle={{ color: "#e2e8f0" }}
             formatter={(value) =>
-              [`$${Number(value).toLocaleString()}`, "Equity"] as [string, string]
+              [fmtMoney(Number(value), currency), "Equity"] as [string, string]
             }
           />
           <Line

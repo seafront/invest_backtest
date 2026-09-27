@@ -1,4 +1,5 @@
 import { POSITIVE, NEGATIVE, CAUTION } from "../theme";
+import { fmtMoney, type Currency } from "../utils/money";
 
 interface Props {
   totalReturn: number;
@@ -9,6 +10,7 @@ interface Props {
   initialCapital: number;
   totalInvested?: number;
   monthlyContribution?: number;
+  currency: Currency;
 }
 
 export default function MetricsPanel({
@@ -20,6 +22,7 @@ export default function MetricsPanel({
   initialCapital,
   totalInvested,
   monthlyContribution,
+  currency,
 }: Props) {
   const invested = totalInvested || initialCapital;
   const finalValue = invested * (1 + totalReturn / 100);
@@ -32,7 +35,8 @@ export default function MetricsPanel({
       color: totalReturn >= 0 ? POSITIVE : NEGATIVE,
     },
     {
-      label: "CAGR",
+      // 적립식은 입금 시점을 반영한 연환산 수익률(IRR)이다. 원금 전부를 첫날 넣은 것으로 보는 CAGR과 다르다.
+      label: isDCA ? "IRR (연환산)" : "CAGR",
       value: `${(cagr ?? 0).toFixed(2)}%`,
       color: (cagr ?? 0) >= 10 ? POSITIVE : (cagr ?? 0) >= 0 ? CAUTION : NEGATIVE,
     },
@@ -40,14 +44,14 @@ export default function MetricsPanel({
       ? [
           {
             label: "Total Invested",
-            value: `$${invested.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+            value: fmtMoney(invested, currency),
             color: "#3b82f6",
           },
         ]
       : []),
     {
       label: "Final Value",
-      value: `$${finalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+      value: fmtMoney(finalValue, currency),
       color: totalReturn >= 0 ? POSITIVE : NEGATIVE,
     },
     {

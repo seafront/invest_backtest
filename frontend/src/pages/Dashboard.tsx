@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { BacktestSummary } from "../types";
 import { listBacktests, deleteBacktest, listTickers } from "../api/client";
 import { POSITIVE, NEGATIVE, CAUTION } from "../theme";
+import { currencyOf, fmtMoney } from "../utils/money";
 
 /** 요약 타일. label 아래 큰 값, 그 아래 어떤 백테스트인지 밝히는 보조 문구. */
 function Tile({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
@@ -160,9 +161,9 @@ export default function Dashboard() {
                   </td>
                   <td style={{ padding: "8px 10px", fontSize: 11 }}>
                     {(b.invest_mode || "lump_sum") === "dca" ? (
-                      <span style={{ color: "#8b5cf6" }}>DCA ${(b.monthly_contribution || 0).toLocaleString()}/mo</span>
+                      <span style={{ color: "#8b5cf6" }}>DCA {fmtMoney(b.monthly_contribution || 0, currencyOf(b.ticker))}/mo</span>
                     ) : (
-                      <span style={{ color: "#3b82f6" }}>${b.initial_capital.toLocaleString()}</span>
+                      <span style={{ color: "#3b82f6" }}>{fmtMoney(b.initial_capital, currencyOf(b.ticker))}</span>
                     )}
                   </td>
                   <td style={{ color: "#94a3b8", padding: "8px 10px", fontSize: 12 }}>

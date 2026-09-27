@@ -567,6 +567,44 @@ export interface BacktestRequest {
   monthly_contribution: number;
 }
 
+/** 한 종목 × 전체 전략 비교 (Auto 모드). 저장하지 않는다. */
+export interface AutoBacktestRequest {
+  ticker: string;
+  years?: number;
+  invest_mode: "lump_sum" | "dca";
+  initial_capital: number;
+  monthly_contribution: number;
+}
+
+export interface AutoStrategyResult {
+  strategy_name: string;
+  display_name: string;
+  params: Record<string, number>;
+  total_return: number;
+  cagr: number;
+  sharpe_ratio: number;
+  max_drawdown: number;
+  win_rate: number;
+  /** 청산(SELL) 횟수 */
+  trades_count: number;
+  /** 주 단위 누적 수익률(%). 적립식은 그 시점까지 넣은 원금 대비. */
+  curve: { date: string; ret: number; idx: number }[];
+}
+
+export interface AutoBacktestResponse {
+  ticker: string;
+  start_date: string;
+  end_date: string;
+  /** 실제 데이터 구간. 상장이 늦은 종목은 요청 구간보다 짧다. */
+  data_start: string;
+  data_end: string;
+  invest_mode: "lump_sum" | "dca";
+  total_invested: number;
+  /** 총수익률 내림차순 */
+  results: AutoStrategyResult[];
+  failed: { strategy_name: string; display_name: string; error: string }[];
+}
+
 // Screening
 export interface MarketCapResult {
   ticker: string;

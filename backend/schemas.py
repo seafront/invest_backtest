@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # --- Stock ---
@@ -606,6 +606,52 @@ class BacktestRequest(BaseModel):
     invest_mode: str = "lump_sum"  # "lump_sum" or "dca"
     initial_capital: float = 100000.0
     monthly_contribution: float = 0.0
+
+
+class AutoBacktestRequest(BaseModel):
+    """한 종목에 등록된 전략 전부를 기본 파라미터로 돌린다. 기간은 오늘 기준 최근 N년."""
+    ticker: str
+    years: int = Field(5, ge=1, le=30)
+    invest_mode: str = "lump_sum"
+    initial_capital: float = 100000.0
+    monthly_contribution: float = 0.0
+
+
+class AutoCurvePoint(BaseModel):
+    date: date
+    ret: float  # 누적 수익률(%) = (평가금액 - 그때까지 넣은 원금) / 그때까지 넣은 원금
+    idx: float  # 입금 효과를 뺀 수익률 지수(시작 1.0). 두 점의 비율 = 그 구간 수익률
+
+
+class AutoStrategyResult(BaseModel):
+    strategy_name: str
+    display_name: str
+    params: dict
+    total_return: float
+    cagr: float
+    sharpe_ratio: float
+    max_drawdown: float
+    win_rate: float
+    trades_count: int  # 청산(SELL) 횟수
+    curve: list[AutoCurvePoint]  # 주 단위로 줄인 누적 수익률
+
+
+class AutoStrategyFailure(BaseModel):
+    strategy_name: str
+    display_name: str
+    error: str
+
+
+class AutoBacktestResponse(BaseModel):
+    ticker: str
+    start_date: date  # 요청 구간
+    end_date: date
+    data_start: date  # 실제 데이터 구간 — 상장이 늦은 종목은 요청보다 짧다
+    data_end: date
+    invest_mode: str
+    total_invested: float
+    results: list[AutoStrategyResult]  # 총수익률 내림차순
+    failed: list[AutoStrategyFailure]
 
 
 class TradeResult(BaseModel):

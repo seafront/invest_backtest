@@ -1,11 +1,13 @@
 import type { TradeResult } from "../types";
 import { POSITIVE, NEGATIVE } from "../theme";
+import { fmtMoney, type Currency } from "../utils/money";
 
 interface Props {
   trades: TradeResult[];
+  currency: Currency;
 }
 
-export default function TradeLog({ trades }: Props) {
+export default function TradeLog({ trades, currency }: Props) {
   // Calculate cumulative P&L.
   // 콜백 안에서 바깥 변수를 재할당하면 렌더 중 변형으로 취급되므로 순회로 누적한다.
   const tradesWithCum: (TradeResult & { cumPnl: number | null })[] = [];
@@ -59,7 +61,7 @@ export default function TradeLog({ trades }: Props) {
                   {t.action}
                 </td>
                 <td style={{ color: "#e2e8f0", padding: "8px 12px" }}>
-                  ${t.price.toFixed(2)}
+                  {fmtMoney(t.price, currency, 2)}
                 </td>
                 <td style={{ color: "#e2e8f0", padding: "8px 12px" }}>{t.shares}</td>
                 <td
@@ -73,7 +75,7 @@ export default function TradeLog({ trades }: Props) {
                     padding: "8px 12px",
                   }}
                 >
-                  {t.action === "SELL" ? `$${t.pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "-"}
+                  {t.action === "SELL" ? fmtMoney(t.pnl, currency, 2) : "-"}
                 </td>
                 <td
                   style={{
@@ -88,7 +90,7 @@ export default function TradeLog({ trades }: Props) {
                   }}
                 >
                   {t.cumPnl !== null
-                    ? `$${t.cumPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ? fmtMoney(t.cumPnl, currency, 2)
                     : "-"}
                 </td>
               </tr>
