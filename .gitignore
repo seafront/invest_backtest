@@ -12,6 +12,10 @@ backend/*.db
 backend/.env
 backend/logs/
 backend/.kis_token.json
+# collect.py 실행 중 잠금·진행 상황 파일
+backend/.collect.lock
+backend/.collect_status.json
+backend/.collect_status.tmp
 
 # Node
 frontend/node_modules/

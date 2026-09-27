@@ -3,7 +3,9 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 DATABASE_URL = "sqlite:///./backtest.db"
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# timeout: 다른 연결이 쓰는 동안 기다리는 시간(초). 기본 5초는 서버와 collect.py가 함께 쓸 때
+# 모자랐다 — 480MB DB에서 긴 읽기 하나가 수집의 쓰기를 5초 넘게 막아 "database is locked"로 실패했다.
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 30})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

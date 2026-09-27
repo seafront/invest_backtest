@@ -7,8 +7,12 @@ S&P 500을 5년치만 받아도 60만 행이 넘어 2분 이상 걸린다. 동�
 동시에 한 작업만 돈다. 같은 테이블에 두 작업이 쓰면 진행률 집계가 꼬이고
 야후 쪽 요청 한도에도 걸리기 쉽다.
 """
+import json
+import os
 import threading
+import urllib.request
 from datetime import date, datetime
+from pathlib import Path
 
 import pandas as pd
 
@@ -63,6 +67,86 @@ _job: dict = {
     "finished_at": None,
     "error": None,
 }
+
+
+# ── 서버 밖(collect.py)에서 도는 수집 ─────────────────────────────────────────
+# 개발 서버는 --reload 로 재시작될 때마다 안에서 돌던 수집을 잃는다. collect.py가 같은 코드를
+# 별도 프로세스로 돌리고, 서버는 아래 파일로 그 진행을 읽어 화면에 보여 준다. 두 곳에서 동시에
+# 돌면 증권사 호출 한도를 나눠 쓰다 서로 거절당하므로, 한쪽이 돌면 다른 쪽은 시작하지 않는다.
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+EXTERNAL_LOCK = _BACKEND_DIR / ".collect.lock"
+EXTERNAL_STATUS = _BACKEND_DIR / ".collect_status.json"
+SERVER_STATUS_URL = "http://localhost:8000/api/stocks/bulk-fetch/status"
+
+
+class AlreadyRunning(RuntimeError):
+    pass
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def external_pid() -> int | None:
+    """collect.py가 돌고 있으면 그 pid. 강제 종료로 남은 잠금 파일은 무시한다."""
+    try:
+        pid = int(EXTERNAL_LOCK.read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return pid if pid != os.getpid() and _pid_alive(pid) else None
+
+
+def claim_external() -> None:
+    """collect.py 시작 전에 부른다. 다른 수집이 돌고 있으면 AlreadyRunning."""
+    other = external_pid()
+    if other:
+        raise AlreadyRunning(f"다른 collect.py가 이미 돌고 있습니다 (pid {other})")
+    # 서버 안에서 도는 작업은 서버 메모리에만 있어 HTTP로 물어본다. 서버가 꺼져 있으면 그냥 진행한다.
+    try:
+        with urllib.request.urlopen(SERVER_STATUS_URL, timeout=3) as res:
+            server = json.load(res)
+        if server.get("running") and not server.get("external"):
+            raise AlreadyRunning(
+                f"서버에서 {server.get('universe')} 수집이 돌고 있습니다 — 끝난 뒤 실행하세요"
+            )
+    except AlreadyRunning:
+        raise
+    except Exception:  # noqa: BLE001 - 서버가 없거나 응답이 없으면 확인할 대상이 없다
+        pass
+    EXTERNAL_LOCK.write_text(str(os.getpid()))
+
+
+def release_external() -> None:
+    try:
+        if EXTERNAL_LOCK.read_text().strip() == str(os.getpid()):
+            EXTERNAL_LOCK.unlink()
+    except OSError:
+        pass
+
+
+def write_external_status(snapshot: dict) -> None:
+    data = {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in snapshot.items()}
+    tmp = EXTERNAL_STATUS.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False))
+    tmp.replace(EXTERNAL_STATUS)  # 서버가 반쯤 쓴 파일을 읽지 않도록 바꿔치기한다
+
+
+def read_external_status() -> dict | None:
+    """collect.py가 남긴 마지막 진행 상황. 프로세스가 죽었으면 running=False로 돌려준다."""
+    try:
+        data = json.loads(EXTERNAL_STATUS.read_text())
+    except (OSError, ValueError):
+        return None
+    alive = external_pid() is not None
+    data["running"] = bool(data.get("running")) and alive
+    data["external"] = True
+    return data
 
 
 def status() -> dict:

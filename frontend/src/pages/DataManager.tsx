@@ -671,6 +671,7 @@ export default function DataManager() {
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
               <span>
                 {bulk.universe} {bulk.running ? "수집 중" : bulk.error ? "수집 중단" : "수집 완료"}
+                {bulk.external && <span title="backend/collect.py로 서버 밖에서 도는 수집"> (collect.py)</span>}
                 {bulk.phase === "flows" ? (
                   <> · 수급 {bulk.flow_done}/{bulk.flow_total}종목 · 신규 {bulk.flow_added.toLocaleString()}일</>
                 ) : bulk.phase === "fundamentals" || (!bulk.running && bulk.fund_total > 0) ? (

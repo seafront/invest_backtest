@@ -86,6 +86,8 @@ def start_bulk_fetch(req: BulkFetchRequest, background: BackgroundTasks, db: Ses
 
     # 구성종목을 받기 전에 자리부터 선점한다. 네트워크를 다녀오는 동안 들어온
     # 두 번째 요청이 함께 통과하면 두 작업이 같은 카운터를 쓰게 된다.
+    if bulk_job.external_pid():
+        raise HTTPException(status_code=409, detail="collect.py 수집이 돌고 있습니다 — 끝난 뒤 시작하세요")
     if not bulk_job.reserve(req.universe):
         raise HTTPException(status_code=409, detail="이미 진행 중인 작업이 있습니다")
 
@@ -114,6 +116,8 @@ def start_bulk_fundamentals(universe: str = Query("kospi200"), background: Backg
     """
     if universe not in SOURCES:
         raise HTTPException(status_code=400, detail=f"알 수 없는 유니버스: {universe}")
+    if bulk_job.external_pid():
+        raise HTTPException(status_code=409, detail="collect.py 수집이 돌고 있습니다 — 끝난 뒤 시작하세요")
     if not bulk_job.reserve(universe):
         raise HTTPException(status_code=409, detail="이미 진행 중인 작업이 있습니다")
 
@@ -130,7 +134,15 @@ def start_bulk_fundamentals(universe: str = Query("kospi200"), background: Backg
 
 @router.get("/bulk-fetch/status", response_model=BulkFetchStatus)
 def bulk_fetch_status():
-    return bulk_job.status()
+    """서버 안의 작업이 돌고 있으면 그것을, 아니면 collect.py가 남긴 진행 상황을 돌려준다."""
+    own = bulk_job.status()
+    if own["running"]:
+        return own
+    external = bulk_job.read_external_status()
+    # 서버가 방금 재시작돼 자기 기록이 비어 있어도 collect.py 쪽 진행은 보여 준다.
+    if external and (external["running"] or not own["started_at"]):
+        return external
+    return own
 
 
 @router.get("/{ticker}", response_model=list[StockData])

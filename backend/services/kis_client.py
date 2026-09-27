@@ -141,18 +141,24 @@ def request(path: str, tr_id: str, params: dict) -> dict:
 
     for attempt in range(RETRY_ON_THROTTLE):
         _throttle()
-        res = requests.get(
-            f"{host}{path}",
-            headers={
-                "authorization": f"Bearer {get_token()}",
-                "appkey": key,
-                "appsecret": secret,
-                "tr_id": tr_id,
-                "custtype": "P",  # 개인
-            },
-            params=params,
-            timeout=20,
-        )
+        try:
+            res = requests.get(
+                f"{host}{path}",
+                headers={
+                    "authorization": f"Bearer {get_token()}",
+                    "appkey": key,
+                    "appsecret": secret,
+                    "tr_id": tr_id,
+                    "custtype": "P",  # 개인
+                },
+                params=params,
+                timeout=20,
+            )
+        except (requests.Timeout, requests.ConnectionError) as e:
+            # 모의투자 서버는 응답이 20초를 넘기곤 한다. 다음 호출은 대개 정상이라 재시도한다.
+            last_msg = type(e).__name__
+            time.sleep(MIN_INTERVAL * (attempt + 2))
+            continue
         body = res.json() if res.content else {}
         # 유량 초과·일시 오류는 잠깐 쉬면 풀린다. 다른 오류와 달리 재시도할 가치가 있다.
         if body.get("msg_cd") in RETRYABLE:

@@ -23,6 +23,13 @@ cd backend
 source venv/bin/activate            # venv already exists in repo
 uvicorn main:app --reload --port 8000
 
+# Long index collection outside the dev server (survives --reload restarts;
+# progress still shows in Data Manager). Resumes where it stopped.
+python collect.py kospi200                              # prices + investor flows, 5y
+python collect.py sp500 --no-flows
+python collect.py kospi200 --tickers 023530.KS,024110.KS   # refill a few
+# Editing any backend .py while a *server-side* bulk job runs kills that job.
+
 # First-time backend setup
 cd backend && python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
