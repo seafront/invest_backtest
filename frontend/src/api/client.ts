@@ -16,6 +16,8 @@ import type {
   BacktestRequest,
   AutoBacktestRequest,
   AutoBacktestResponse,
+  SimulateRequest,
+  SimulateResponse,
   BacktestResult,
   BacktestSummary,
   MarketCapResult,
@@ -116,6 +118,9 @@ export const runBacktest = (req: BacktestRequest) =>
 
 export const runAutoBacktest = (req: AutoBacktestRequest) =>
   api.post<AutoBacktestResponse>("/backtests/auto", req);
+
+export const simulateParams = (req: SimulateRequest) =>
+  api.post<SimulateResponse>("/backtests/simulate", req);
 
 export const listBacktests = () =>
   api.get<BacktestSummary[]>("/backtests/");

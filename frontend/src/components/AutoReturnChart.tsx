@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import {
   CartesianGrid,
   Line,
+  ReferenceArea,
   LineChart,
   ReferenceLine,
   ResponsiveContainer,
@@ -11,6 +12,7 @@ import {
 } from "recharts";
 import type { AutoStrategyResult } from "../types";
 import { fmtMonth, ts } from "../utils/chart";
+import { NEGATIVE, POSITIVE } from "../theme";
 
 const MUTED = "#94a3b8";
 const INK = "#e2e8f0";
@@ -29,15 +31,23 @@ export interface ChartSeries {
   benchmark?: boolean;
 }
 
+/** 배경에 옅게 칠할 추세 구간. 상승은 초록, 하락은 빨강 계열이다. */
+export interface ChartRegion {
+  start: string;
+  end: string;
+  kind: "up" | "down" | "flat";
+}
+
 interface Props {
   series: ChartSeries[];
   hovered: string | null;
+  regions?: ChartRegion[];
 }
 
 const pct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 
 /** 전략별 누적 수익률을 한 축에 겹쳐 그린다. 선이 적을 때만 끝에 이름을 직접 단다. */
-export default function AutoReturnChart({ series, hovered }: Props) {
+export default function AutoReturnChart({ series, hovered, regions = [] }: Props) {
   const { rows, domain, ticks, labelShift } = useMemo(() => {
     const byDate = new Map<number, Record<string, number>>();
     let lo = 0;
@@ -110,6 +120,19 @@ export default function AutoReturnChart({ series, hovered }: Props) {
           stroke={GRID}
           width={52}
         />
+        {regions
+          .filter((r) => r.kind !== "flat")
+          .map((r) => (
+            <ReferenceArea
+              key={`${r.start}-${r.end}`}
+              x1={ts(r.start)}
+              x2={ts(r.end)}
+              fill={r.kind === "up" ? POSITIVE : NEGATIVE}
+              fillOpacity={0.07}
+              strokeOpacity={0}
+              ifOverflow="hidden"
+            />
+          ))}
         <ReferenceLine y={0} stroke={MUTED} strokeOpacity={0.6} />
         <Tooltip
           cursor={{ stroke: MUTED, strokeDasharray: "3 3" }}

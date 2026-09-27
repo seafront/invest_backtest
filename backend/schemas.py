@@ -77,6 +77,7 @@ class BulkFetchStatus(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     error: str | None
+    external: bool = False  # 서버 밖(collect.py)에서 도는 수집이면 True
 
 
 class DrawdownPoint(BaseModel):
@@ -634,6 +635,11 @@ class AutoStrategyResult(BaseModel):
     win_rate: float
     trades_count: int  # 청산(SELL) 횟수
     curve: list[AutoCurvePoint]  # 주 단위로 줄인 누적 수익률
+    # 첫 매매일. 그 전 구간의 0%는 판단이 아니라 "아직 들어가지 않음"이다 — 긴 이동평균은
+    # 계산에 필요한 일수만큼 신호를 못 내므로, 시작 직후 구간을 방어로 읽으면 안 된다.
+    first_trade: date | None = None
+    # /simulate 에서만 채운다. SimulateResponse.regimes 와 같은 순서의 구간별 수익률(%).
+    regime_returns: list[float | None] | None = None
 
 
 class AutoStrategyFailure(BaseModel):
@@ -652,6 +658,38 @@ class AutoBacktestResponse(BaseModel):
     total_invested: float
     results: list[AutoStrategyResult]  # 총수익률 내림차순
     failed: list[AutoStrategyFailure]
+
+
+class SimulateRequest(BaseModel):
+    """한 전략을 파라미터 조합 여러 개로 돌려 비교한다. 저장하지 않는다."""
+    ticker: str
+    strategy_name: str
+    start_date: date
+    end_date: date
+    invest_mode: str = "lump_sum"
+    initial_capital: float = 100000.0
+    monthly_contribution: float = 0.0
+    param_sets: list[dict] = Field(..., min_length=1, max_length=10)
+
+
+class TrendRegime(BaseModel):
+    start: date
+    end: date
+    kind: str  # up / down / flat
+    weeks: int
+    benchmark_return: float  # 그 구간 Buy & Hold 수익률(%)
+
+
+class SimulateResponse(BaseModel):
+    ticker: str
+    data_start: date
+    data_end: date
+    invest_mode: str
+    total_invested: float
+    benchmark: AutoStrategyResult  # 같은 구간·같은 투자 방식의 Buy & Hold
+    results: list[AutoStrategyResult]  # param_sets 순서 그대로
+    regimes: list[TrendRegime]  # Buy & Hold 경로를 고점·저점으로 나눈 추세 구간
+    regime_threshold: float  # 추세 전환으로 본 되돌림(%). 종목 변동성에 비례한다
 
 
 class TradeResult(BaseModel):

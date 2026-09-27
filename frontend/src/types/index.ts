@@ -82,6 +82,8 @@ export interface BulkFetchStatus {
   started_at: string | null;
   finished_at: string | null;
   error: string | null;
+  /** 서버 밖(backend/collect.py)에서 도는 수집이면 true */
+  external?: boolean;
 }
 
 export interface InvestorFlowPoint {
@@ -589,6 +591,46 @@ export interface AutoStrategyResult {
   trades_count: number;
   /** 주 단위 누적 수익률(%). 적립식은 그 시점까지 넣은 원금 대비. */
   curve: { date: string; ret: number; idx: number }[];
+  /** 첫 매매일. 그 전 구간의 0%는 판단이 아니라 "아직 들어가지 않음"이다. */
+  first_trade?: string | null;
+  /** /simulate 에서만. SimulateResponse.regimes 순서의 구간별 수익률(%) */
+  regime_returns?: (number | null)[] | null;
+}
+
+/** Buy & Hold 경로를 고점·저점으로 나눈 추세 구간 */
+export interface TrendRegime {
+  start: string;
+  end: string;
+  kind: "up" | "down" | "flat";
+  weeks: number;
+  benchmark_return: number;
+}
+
+/** 한 전략을 파라미터 조합 여러 개로 돌린다 (결과 화면의 파라미터 비교). 저장하지 않는다. */
+export interface SimulateRequest {
+  ticker: string;
+  strategy_name: string;
+  start_date: string;
+  end_date: string;
+  invest_mode: "lump_sum" | "dca";
+  initial_capital: number;
+  monthly_contribution: number;
+  param_sets: Record<string, number>[];
+}
+
+export interface SimulateResponse {
+  ticker: string;
+  data_start: string;
+  data_end: string;
+  invest_mode: "lump_sum" | "dca";
+  total_invested: number;
+  /** 같은 구간·같은 투자 방식의 Buy & Hold */
+  benchmark: AutoStrategyResult;
+  /** param_sets 순서 그대로. 빠진 파라미터는 기본값으로 채워져 온다. */
+  results: AutoStrategyResult[];
+  regimes: TrendRegime[];
+  /** 추세 전환으로 본 되돌림(%). 종목 변동성에 비례한다 */
+  regime_threshold: number;
 }
 
 export interface AutoBacktestResponse {

@@ -7,6 +7,8 @@ from models import Backtest, Trade
 from schemas import (
     AutoBacktestRequest,
     AutoBacktestResponse,
+    SimulateRequest,
+    SimulateResponse,
     BacktestRequest,
     BacktestResult,
     BacktestSummary,
@@ -14,6 +16,7 @@ from schemas import (
 from services.data_fetcher import get_cached_data, fetch_and_cache
 from services.backtest_engine import run_backtest
 from services.strategies import get_strategy, list_strategies
+from services import regimes as trend
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +108,36 @@ def _return_curve(equity_curve: list[dict], invest_mode: str,
     return out
 
 
+def _validate_params(strategy, params: dict) -> None:
+    for schema in strategy.param_schema:
+        name = schema["name"]
+        if name in params:
+            val = params[name]
+            if val < schema["min"] or val > schema["max"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Parameter '{name}' must be between {schema['min']} and {schema['max']}, got {val}",
+                )
+
+
+def _summarize(strategy, params: dict, r: dict, invest_mode: str,
+               initial_capital: float, monthly_contribution: float) -> dict:
+    """엔진 결과를 비교표 한 줄로 줄인다. 일별 곡선 대신 주 단위 곡선을 싣는다."""
+    return {
+        "strategy_name": strategy.name,
+        "display_name": strategy.display_name,
+        "params": params,
+        "total_return": r["total_return"],
+        "cagr": r["cagr"],
+        "sharpe_ratio": r["sharpe_ratio"],
+        "max_drawdown": r["max_drawdown"],
+        "win_rate": r["win_rate"],
+        "trades_count": sum(1 for t in r["trades"] if t["action"] == "SELL"),
+        "curve": _return_curve(r["equity_curve"], invest_mode, initial_capital, monthly_contribution),
+        "first_trade": next((t["date"] for t in r["trades"]), None),
+    }
+
+
 def _years_before(d: date_type, years: int) -> date_type:
     try:
         return d.replace(year=d.year - years)
@@ -120,15 +153,7 @@ def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    for schema in strategy.param_schema:
-        name = schema["name"]
-        if name in req.params:
-            val = req.params[name]
-            if val < schema["min"] or val > schema["max"]:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Parameter '{name}' must be between {schema['min']} and {schema['max']}, got {val}",
-                )
+    _validate_params(strategy, req.params)
 
     if req.start_date >= req.end_date:
         raise HTTPException(status_code=400, detail="start_date must be before end_date")
@@ -227,19 +252,8 @@ def auto_backtest(req: AutoBacktestRequest, db: Session = Depends(get_db)):
                            "error": str(e)[:200]})
             continue
         total_invested = r["total_invested"]
-        results.append({
-            "strategy_name": strategy.name,
-            "display_name": strategy.display_name,
-            "params": params,
-            "total_return": r["total_return"],
-            "cagr": r["cagr"],
-            "sharpe_ratio": r["sharpe_ratio"],
-            "max_drawdown": r["max_drawdown"],
-            "win_rate": r["win_rate"],
-            "trades_count": sum(1 for t in r["trades"] if t["action"] == "SELL"),
-            "curve": _return_curve(r["equity_curve"], req.invest_mode,
-                                   req.initial_capital, req.monthly_contribution),
-        })
+        results.append(_summarize(strategy, params, r, req.invest_mode,
+                                  req.initial_capital, req.monthly_contribution))
 
     results.sort(key=lambda x: x["total_return"], reverse=True)
     return {
@@ -252,6 +266,64 @@ def auto_backtest(req: AutoBacktestRequest, db: Session = Depends(get_db)):
         "total_invested": total_invested,
         "results": results,
         "failed": failed,
+    }
+
+
+@router.post("/simulate", response_model=SimulateResponse)
+def simulate(req: SimulateRequest, db: Session = Depends(get_db)):
+    """한 전략을 파라미터 조합 여러 개로 돌린다. 저장하지 않는다.
+
+    결과 화면에서 "값을 바꾸면 어떻게 되나"를 보는 용도다. 시세는 한 번만 읽고
+    같은 구간의 Buy & Hold를 기준으로 함께 돌려, 롤링 비교를 화면에서 할 수 있게 한다.
+    """
+    try:
+        strategy = get_strategy(req.strategy_name)
+        benchmark_strategy = get_strategy("buy_and_hold")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    for params in req.param_sets:
+        _validate_params(strategy, params)
+    if req.start_date >= req.end_date:
+        raise HTTPException(status_code=400, detail="start_date must be before end_date")
+    _validate_invest(req.invest_mode, req.initial_capital, req.monthly_contribution)
+
+    ticker = req.ticker.strip().upper()
+    df = _load_prices(db, ticker, req.start_date, req.end_date)
+    if df is None or len(df) < 2:
+        raise HTTPException(status_code=400, detail=f"{ticker} 시세가 부족합니다")
+
+    def run(strat, params: dict) -> tuple[dict, float]:
+        try:
+            r = run_backtest(df, strat.name, params, req.initial_capital,
+                             req.monthly_contribution, req.invest_mode)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        return _summarize(strat, params, r, req.invest_mode,
+                          req.initial_capital, req.monthly_contribution), r["total_invested"]
+
+    benchmark, total_invested = run(benchmark_strategy, {})
+    # 빠진 파라미터는 기본값으로 채워 돌려준다. 화면이 "무엇으로 돌렸는지"를 그대로 보여 줄 수 있다.
+    defaults = {p["name"]: p["default"] for p in strategy.param_schema}
+    results = [run(strategy, {**defaults, **params})[0] for params in req.param_sets]
+
+    # 추세 구간은 B&H 경로로 나누고, 모든 곡선을 같은 주 단위 점에서 잰다(같은 시세라 날짜가 같다).
+    segments, threshold = trend.segment([(p["date"], p["idx"]) for p in benchmark["curve"]])
+    for row in [benchmark, *results]:
+        row["regime_returns"] = trend.returns_in([p["idx"] for p in row["curve"]], segments)
+    return {
+        "ticker": ticker,
+        "data_start": df.iloc[0]["date"],
+        "data_end": df.iloc[-1]["date"],
+        "invest_mode": req.invest_mode,
+        "total_invested": total_invested,
+        "benchmark": benchmark,
+        "results": results,
+        "regimes": [
+            {"start": s["start"], "end": s["end"], "kind": s["kind"],
+             "weeks": s["end_index"] - s["start_index"], "benchmark_return": s["benchmark_return"]}
+            for s in segments
+        ],
+        "regime_threshold": round(threshold * 100, 1),
     }
 
 
