@@ -1,6 +1,6 @@
 import pandas as pd
 from services.strategies import get_strategy
-from utils.metrics import total_return, sharpe_ratio, max_drawdown, win_rate, cagr
+from utils.metrics import total_return, sharpe_ratio, max_drawdown, win_rate, cagr, money_weighted_cagr
 
 
 def run_backtest(
@@ -36,6 +36,10 @@ def run_backtest(
     equity_curve = []
     trades = []
     last_contribution_month = None
+    # 날마다 평가금액에 더해진 입금액. 적립식 지표에서 입금 효과를 걷어내는 데 쓴다.
+    contributions: list[float] = []
+    # (입금일, 금액). 적립식 연환산 수익률(IRR)용. 첫 입금은 첫 거래일이다.
+    flows = []
 
     for _, row in df.iterrows():
         d = str(row["date"])
@@ -46,12 +50,17 @@ def run_backtest(
         if invest_mode == "dca":
             date_obj = row["date"]
             current_month = (date_obj.year, date_obj.month)
+            # 첫 입금은 시작 원금이라 수익률 계산의 기준점이 된다 — 그날 입금은 0으로 센다.
+            contributed = 0.0
             if last_contribution_month is None:
                 last_contribution_month = current_month
+                flows.append((date_obj, monthly_contribution))
             elif current_month != last_contribution_month:
                 cash += monthly_contribution
                 total_invested += monthly_contribution
                 last_contribution_month = current_month
+                flows.append((date_obj, monthly_contribution))
+                contributed = monthly_contribution
 
                 # If holding shares, auto-buy with the new contribution
                 if shares > 0:
@@ -68,6 +77,7 @@ def run_backtest(
                             "shares": new_shares,
                             "pnl": 0.0,
                         })
+            contributions.append(contributed)
 
         # Strategy signals
         if action == "BUY" and shares == 0:
@@ -110,11 +120,19 @@ def run_backtest(
     else:
         days = 0
 
+    if invest_mode == "dca" and len(df) >= 2:
+        flows_by_day = contributions
+        end_day = pd.to_datetime(df["date"].iloc[-1]).date()
+        cagr_value = money_weighted_cagr(flows, final_equity, end_day)
+    else:
+        flows_by_day = None
+        cagr_value = cagr(total_invested, final_equity, days)
+
     return {
         "total_return": round(ret, 2),
-        "cagr": round(cagr(total_invested, final_equity, days), 2),
-        "sharpe_ratio": round(sharpe_ratio(equity_values), 4),
-        "max_drawdown": round(max_drawdown(equity_values), 2),
+        "cagr": round(cagr_value, 2),
+        "sharpe_ratio": round(sharpe_ratio(equity_values, contributions=flows_by_day), 4),
+        "max_drawdown": round(max_drawdown(equity_values, contributions=flows_by_day), 2),
         "win_rate": round(win_rate(sell_pnls), 2),
         "total_invested": round(total_invested, 2),
         "equity_curve": equity_curve,
