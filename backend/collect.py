@@ -133,7 +133,11 @@ def main() -> int:
         status = bulk_job.status()
         bulk_job.write_external_status(status)
         took = timedelta(seconds=int(time.time() - began))
-        print(f"\n끝났습니다 ({took}) — {_progress_line(status)}")
+        # 끝나면 단계가 비워져 한 줄로는 마지막 단계를 알 수 없다. 돌았던 단계를 모두 적는다.
+        print(f"\n끝났습니다 ({took})")
+        for phase, ran in (("", status["total"]), ("flows", status["flow_total"]), ("fundamentals", status["fund_total"])):
+            if ran:
+                print(f"  {_progress_line({**status, 'phase': phase})}")
         if status["failed"]:
             print("실패한 종목:")
             for f in status["failed"]:

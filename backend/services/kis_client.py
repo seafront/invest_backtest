@@ -154,8 +154,9 @@ def request(path: str, tr_id: str, params: dict) -> dict:
                 params=params,
                 timeout=20,
             )
-        except (requests.Timeout, requests.ConnectionError) as e:
-            # 모의투자 서버는 응답이 20초를 넘기곤 한다. 다음 호출은 대개 정상이라 재시도한다.
+        except (requests.Timeout, requests.ConnectionError, requests.exceptions.ChunkedEncodingError) as e:
+            # 모의투자 서버는 응답이 20초를 넘기거나 응답 도중 연결을 끊곤 한다(BrokenPipe →
+            # ChunkedEncodingError). 다음 호출은 대개 정상이라 재시도한다.
             last_msg = type(e).__name__
             time.sleep(MIN_INTERVAL * (attempt + 2))
             continue
