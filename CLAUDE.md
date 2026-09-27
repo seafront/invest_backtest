@@ -99,6 +99,12 @@ BacktestResult · `/strategies` Strategies · `/screener` Screener
   or starts >7 days after the requested start. Tickers are uppercased everywhere.
 - **yfinance quirk:** downloads may return a MultiIndex column frame; `data_fetcher.py`
   flattens it. Keep that handling if you touch fetching.
+- **Indicator warm-up.** `/run`, `/auto`, `/simulate` load extra history before
+  `start_date` (`Strategy.warmup_bars`: 2× the longest `*period` param + 20 bars) and
+  call `run_backtest(..., trade_start=start_date)`: signals use the whole frame, but
+  trading, DCA deposits and the equity curve start at `start_date`. If the last warm-up
+  signal was BUY, the strategy buys on day one. New lookback params must end in
+  `period` to be counted. The Screener still runs without warm-up.
 - **Invest modes:** `lump_sum` (initial capital) and `dca` (monthly_contribution,
   dollar-cost averaging). The engine handles both in one loop in `backtest_engine.py`.
 - **equity_curve** is stored as a JSON column on `backtests` (list of `{date, equity}`),

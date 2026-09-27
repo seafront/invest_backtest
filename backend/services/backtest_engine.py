@@ -3,6 +3,12 @@ from services.strategies import get_strategy
 from utils.metrics import total_return, sharpe_ratio, max_drawdown, win_rate, cagr, money_weighted_cagr
 
 
+def warmup_days(strategy_name: str, params: dict) -> int:
+    """시작일 전에 더 불러올 달력 일수. 거래일 → 달력일(252 → 365)로 넓히고 여유를 더한다."""
+    bars = get_strategy(strategy_name).warmup_bars(params)
+    return int(bars * 365 / 252) + 10 if bars else 0
+
+
 def run_backtest(
     df: pd.DataFrame,
     strategy_name: str,
@@ -10,6 +16,7 @@ def run_backtest(
     initial_capital: float,
     monthly_contribution: float = 0.0,
     invest_mode: str = "lump_sum",
+    trade_start=None,
 ) -> dict:
     """
     Run a backtest on OHLCV DataFrame with the given strategy.
@@ -17,12 +24,38 @@ def run_backtest(
     invest_mode:
       - "lump_sum": Initial capital only, no monthly additions
       - "dca": Monthly contribution only (initial_capital ignored, first month = monthly_contribution)
+
+    trade_start: df가 이 날짜보다 앞의 시세(지표 준비 구간)를 담고 있으면, 신호는 전체로
+    계산하되 매매·입금·평가금액은 이 날짜부터 센다. 시작일부터만 불러오면 200일 이동평균은
+    첫 40주 동안 신호를 못 내, 긴 기간 전략이 첫해를 통째로 현금으로 보냈다.
     """
     strategy = get_strategy(strategy_name)
     signals = strategy.generate_signals(df, params)
     indicators = strategy.compute_indicators(df, params)
 
     signal_dates = {s.date: s.action for s in signals}
+
+    if trade_start is not None:
+        warm = df[df["date"] < trade_start]
+        df = df[df["date"] >= trade_start].reset_index(drop=True)
+        # 신호는 "사라/팔아라" 사건이지 보유 상태가 아니다. 준비 구간의 마지막 사건이 BUY였다면
+        # 전략은 시작일에 이미 보유 중이어야 하므로 첫 거래일에 산다. (Buy & Hold는 준비 구간
+        # 첫날의 BUY가 여기로 넘어와 예전처럼 시작일에 산다.)
+        warm_dates = {str(d) for d in warm["date"]}
+        carried = None
+        for s in sorted((s for s in signals if s.date in warm_dates), key=lambda s: s.date):
+            if s.action in ("BUY", "SELL"):
+                carried = s.action
+        if carried == "BUY" and not df.empty:
+            first = str(df.iloc[0]["date"])
+            if signal_dates.get(first, "HOLD") == "HOLD":
+                signal_dates[first] = "BUY"
+        # 차트 오버레이도 매매 구간만 보여 준다.
+        start_str = str(trade_start)
+        indicators = {
+            name: [p for p in series if str(p.get("date", "")) >= start_str]
+            for name, series in (indicators or {}).items()
+        }
 
     if invest_mode == "dca":
         cash = monthly_contribution

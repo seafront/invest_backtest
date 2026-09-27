@@ -14,7 +14,7 @@ from schemas import (
     BacktestSummary,
 )
 from services.data_fetcher import get_cached_data, fetch_and_cache
-from services.backtest_engine import run_backtest
+from services.backtest_engine import run_backtest, warmup_days
 from services.strategies import get_strategy, list_strategies
 from services import regimes as trend
 
@@ -138,6 +138,23 @@ def _summarize(strategy, params: dict, r: dict, invest_mode: str,
     }
 
 
+def _load_with_warmup(db: Session, ticker: str, start: date_type, end: date_type, warm_days: int):
+    """지표 준비 구간까지 붙여 읽는다. 매매 구간(start 이후)이 2일도 안 되면 400.
+
+    돌려주는 df는 준비 구간을 포함한다. run_backtest(trade_start=start)가 그 앞을 잘라 쓴다.
+    """
+    df = _load_prices(db, ticker, start - timedelta(days=warm_days), end)
+    if df is None or len(df[df["date"] >= start]) < 2:
+        raise HTTPException(status_code=400, detail=f"{ticker} 시세가 부족합니다")
+    return df
+
+
+def _trading_span(df, start: date_type) -> tuple[date_type, date_type]:
+    """준비 구간을 뺀 실제 매매 구간의 첫날·마지막 날."""
+    trading = df[df["date"] >= start]
+    return trading.iloc[0]["date"], trading.iloc[-1]["date"]
+
+
 def _years_before(d: date_type, years: int) -> date_type:
     try:
         return d.replace(year=d.year - years)
@@ -159,10 +176,12 @@ def run_backtest_endpoint(req: BacktestRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="start_date must be before end_date")
 
     _validate_invest(req.invest_mode, req.initial_capital, req.monthly_contribution)
-    df = _load_prices(db, req.ticker, req.start_date, req.end_date)
+    df = _load_with_warmup(db, req.ticker, req.start_date, req.end_date,
+                           warmup_days(req.strategy_name, req.params))
 
     try:
-        result = run_backtest(df, req.strategy_name, req.params, req.initial_capital, req.monthly_contribution, req.invest_mode)
+        result = run_backtest(df, req.strategy_name, req.params, req.initial_capital,
+                              req.monthly_contribution, req.invest_mode, trade_start=req.start_date)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -235,9 +254,11 @@ def auto_backtest(req: AutoBacktestRequest, db: Session = Depends(get_db)):
     ticker = req.ticker.strip().upper()
     end = date_type.today()
     start = _years_before(end, req.years)
-    df = _load_prices(db, ticker, start, end)
-    if df is None or len(df) < 2:
-        raise HTTPException(status_code=400, detail=f"{ticker} 시세가 부족합니다")
+    # 전략마다 필요한 준비 기간이 달라 가장 긴 것에 맞춰 한 번만 읽는다.
+    warm = max(warmup_days(s.name, {p["name"]: p["default"] for p in s.param_schema})
+               for s in list_strategies())
+    df = _load_with_warmup(db, ticker, start, end, warm)
+    data_start, data_end = _trading_span(df, start)
 
     results, failed = [], []
     total_invested = 0.0
@@ -245,7 +266,7 @@ def auto_backtest(req: AutoBacktestRequest, db: Session = Depends(get_db)):
         params = {p["name"]: p["default"] for p in strategy.param_schema}
         try:
             r = run_backtest(df, strategy.name, params, req.initial_capital,
-                             req.monthly_contribution, req.invest_mode)
+                             req.monthly_contribution, req.invest_mode, trade_start=start)
         except Exception as e:  # noqa: BLE001 - 전략 하나가 실패해도 나머지는 비교한다
             logger.warning(f"Auto backtest failed for {ticker}/{strategy.name}: {e}")
             failed.append({"strategy_name": strategy.name, "display_name": strategy.display_name,
@@ -260,8 +281,8 @@ def auto_backtest(req: AutoBacktestRequest, db: Session = Depends(get_db)):
         "ticker": ticker,
         "start_date": start,
         "end_date": end,
-        "data_start": df.iloc[0]["date"],
-        "data_end": df.iloc[-1]["date"],
+        "data_start": data_start,
+        "data_end": data_end,
         "invest_mode": req.invest_mode,
         "total_invested": total_invested,
         "results": results,
@@ -288,14 +309,15 @@ def simulate(req: SimulateRequest, db: Session = Depends(get_db)):
     _validate_invest(req.invest_mode, req.initial_capital, req.monthly_contribution)
 
     ticker = req.ticker.strip().upper()
-    df = _load_prices(db, ticker, req.start_date, req.end_date)
-    if df is None or len(df) < 2:
-        raise HTTPException(status_code=400, detail=f"{ticker} 시세가 부족합니다")
+    defaults = {p["name"]: p["default"] for p in strategy.param_schema}
+    warm = max(warmup_days(strategy.name, {**defaults, **params}) for params in req.param_sets)
+    df = _load_with_warmup(db, ticker, req.start_date, req.end_date, warm)
+    data_start, data_end = _trading_span(df, req.start_date)
 
     def run(strat, params: dict) -> tuple[dict, float]:
         try:
             r = run_backtest(df, strat.name, params, req.initial_capital,
-                             req.monthly_contribution, req.invest_mode)
+                             req.monthly_contribution, req.invest_mode, trade_start=req.start_date)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         return _summarize(strat, params, r, req.invest_mode,
@@ -303,7 +325,6 @@ def simulate(req: SimulateRequest, db: Session = Depends(get_db)):
 
     benchmark, total_invested = run(benchmark_strategy, {})
     # 빠진 파라미터는 기본값으로 채워 돌려준다. 화면이 "무엇으로 돌렸는지"를 그대로 보여 줄 수 있다.
-    defaults = {p["name"]: p["default"] for p in strategy.param_schema}
     results = [run(strategy, {**defaults, **params})[0] for params in req.param_sets]
 
     # 추세 구간은 B&H 경로로 나누고, 모든 곡선을 같은 주 단위 점에서 잰다(같은 시세라 날짜가 같다).
@@ -312,8 +333,8 @@ def simulate(req: SimulateRequest, db: Session = Depends(get_db)):
         row["regime_returns"] = trend.returns_in([p["idx"] for p in row["curve"]], segments)
     return {
         "ticker": ticker,
-        "data_start": df.iloc[0]["date"],
-        "data_end": df.iloc[-1]["date"],
+        "data_start": data_start,
+        "data_end": data_end,
         "invest_mode": req.invest_mode,
         "total_invested": total_invested,
         "benchmark": benchmark,
@@ -347,9 +368,16 @@ def get_backtest(backtest_id: int, db: Session = Depends(get_db)):
     # Recompute indicators from cached data
     indicators = None
     try:
-        df = get_cached_data(db, backtest.ticker, backtest.start_date, backtest.end_date)
+        # 실행 때와 같이 준비 구간을 붙여 계산하고 매매 구간만 보여 준다. 시작일부터 계산하면
+        # 200일 이동평균 선이 차트 앞 40주 동안 비어 있다.
+        warm = warmup_days(backtest.strategy_name, backtest.params)
+        df = get_cached_data(db, backtest.ticker, backtest.start_date - timedelta(days=warm), backtest.end_date)
         strategy = get_strategy(backtest.strategy_name)
-        indicators = strategy.compute_indicators(df, backtest.params)
+        start_str = str(backtest.start_date)
+        indicators = {
+            name: [p for p in series if str(p.get("date", "")) >= start_str]
+            for name, series in strategy.compute_indicators(df, backtest.params).items()
+        }
     except (ValueError, KeyError) as e:
         logger.warning(f"Could not compute indicators for backtest {backtest_id}: {e}")
 
