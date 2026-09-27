@@ -21,6 +21,7 @@ import {
   syncUniverses,
 } from "../api/client";
 import { errMessage } from "../utils/error";
+import { isoDay, yearsAgo } from "../utils/date";
 
 const FREQ_LABEL: Record<string, string> = {
   daily: "일",
@@ -28,12 +29,6 @@ const FREQ_LABEL: Record<string, string> = {
   monthly: "월",
   quarterly: "분기",
 };
-
-/** YYYY-MM-DD (로컬 시간대 기준). toISOString은 UTC라 새벽에 하루가 밀린다. */
-function isoDay(d: Date): string {
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
-}
 
 const today = isoDay(new Date());
 const REFRESH_START = "2000-01-01";
@@ -46,7 +41,7 @@ const BADGE: Record<string, string> = {
 
 /** S&P 500 일괄 수집 구간. 503종목 26년치는 650MB가 넘어 5년으로 잡는다. */
 const BULK_YEARS = 5;
-const bulkStart = isoDay(new Date(new Date().setFullYear(new Date().getFullYear() - BULK_YEARS)));
+const bulkStart = yearsAgo(BULK_YEARS);
 
 export default function DataManager() {
   const [tab, setTab] = useState<"stocks" | "macro">("stocks");
@@ -275,7 +270,7 @@ export default function DataManager() {
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
 
-  // 섹터는 미국 종목만 채워진다 — 한국은 네이버 업종(산업 수준)만 있고
+  // 섹터는 미국 종목만 채워진다 — 한국은 KRX 업종(KSIC)만 있고
   // 이를 GICS 섹터로 올리려면 손으로 만든 매핑표가 필요하다.
   const sectors = [...new Set(tickers.map((t) => t.sector).filter(Boolean))].sort() as string[];
 
@@ -675,7 +670,7 @@ export default function DataManager() {
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
               <span>
-                {bulk.universe} {bulk.running ? "수집 중" : "수집 완료"}
+                {bulk.universe} {bulk.running ? "수집 중" : bulk.error ? "수집 중단" : "수집 완료"}
                 {bulk.phase === "flows" ? (
                   <> · 수급 {bulk.flow_done}/{bulk.flow_total}종목 · 신규 {bulk.flow_added.toLocaleString()}일</>
                 ) : bulk.phase === "fundamentals" || (!bulk.running && bulk.fund_total > 0) ? (
@@ -693,11 +688,14 @@ export default function DataManager() {
                 style={{
                   height: "100%",
                   width: `${Math.min(100, progress * 100)}%`,
-                  background: bulk.running ? "#3b82f6" : "#10b981",
+                  background: bulk.running ? "#3b82f6" : bulk.error ? "#ef4444" : "#10b981",
                   transition: "width .3s",
                 }}
               />
             </div>
+            {!bulk.running && bulk.error && (
+              <p style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>{bulk.error}</p>
+            )}
             {bulk.failed.length > 0 && (
               <p style={{ color: "#64748b", fontSize: 11, marginTop: 6 }}>
                 실패: {bulk.failed.slice(0, 3).join(", ")}

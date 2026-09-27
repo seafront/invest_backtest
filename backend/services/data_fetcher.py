@@ -1,3 +1,4 @@
+import threading
 from datetime import date, datetime
 import yfinance as yf
 import pandas as pd
@@ -5,11 +6,22 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, insert
 from models import Company, IndexMember, Stock
 
+# yf.download는 결과를 모듈 전역(yfinance.shared._DFS)에 모으고, 호출이 시작될 때 그것을
+# 비운다. 스레드 모드는 그 dict가 종목 수만큼 찰 때까지 기다리므로, 일괄 수집이 도는 중에
+# 백테스트가 다른 종목을 받으면 일괄 수집 쪽은 영원히 기다린다 (2026-09 실제로 멈췄다).
+# 프로세스 안의 모든 다운로드를 이 락으로 한 줄로 세운다.
+_YF_LOCK = threading.Lock()
+
+
+def yf_download(*args, **kwargs) -> pd.DataFrame:
+    with _YF_LOCK:
+        return yf.download(*args, **kwargs)
+
 
 def fetch_and_cache(db: Session, ticker: str, start_date: date, end_date: date) -> pd.DataFrame:
     """Download OHLCV from yfinance and cache in DB. Returns DataFrame."""
     ticker = ticker.upper()
-    df = yf.download(ticker, start=str(start_date), end=str(end_date), progress=False)
+    df = yf_download(ticker, start=str(start_date), end=str(end_date), progress=False)
 
     if df.empty:
         raise ValueError(f"No data found for {ticker} in the given date range")

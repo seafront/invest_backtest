@@ -32,6 +32,10 @@ TOKEN_MARGIN = 600  # 만료 10분 전에는 새로 받는다
 # 빡빡해서 기본값을 모의 기준으로 잡는다 — 늦더라도 거절당하는 것보다 낫다.
 MIN_INTERVAL = float(os.getenv("KIS_MIN_INTERVAL", "0.6"))
 RETRY_ON_THROTTLE = 3
+# 잠깐 뒤 다시 부르면 풀리는 오류. EGW00201은 유량 초과, EGW00316은 "조회 처리 중 오류 —
+# 재 조회 수행 부탁드립니다"로 KIS가 직접 재시도를 요청한다 (HTTP 500으로 온다).
+# 재시도 없이 실패로 올리면 일괄 수집이 연속 실패로 중단된다 (2026-09 수급 48/201에서 멈췄다).
+RETRYABLE = {"EGW00201", "EGW00316"}
 _last_call = 0.0
 
 
@@ -133,6 +137,7 @@ def _throttle() -> None:
 def request(path: str, tr_id: str, params: dict) -> dict:
     """시세 계열 GET 호출. 주문 API는 이 클라이언트에서 다루지 않는다."""
     key, secret, host = _credentials()
+    last_msg = ""
 
     for attempt in range(RETRY_ON_THROTTLE):
         _throttle()
@@ -149,8 +154,9 @@ def request(path: str, tr_id: str, params: dict) -> dict:
             timeout=20,
         )
         body = res.json() if res.content else {}
-        # 유량 초과는 잠깐 쉬면 풀린다. 다른 오류와 달리 재시도할 가치가 있다.
-        if body.get("msg_cd") == "EGW00201":
+        # 유량 초과·일시 오류는 잠깐 쉬면 풀린다. 다른 오류와 달리 재시도할 가치가 있다.
+        if body.get("msg_cd") in RETRYABLE:
+            last_msg = body.get("msg_cd")
             time.sleep(MIN_INTERVAL * (attempt + 2))
             continue
         if not res.ok:
@@ -160,7 +166,8 @@ def request(path: str, tr_id: str, params: dict) -> dict:
             raise KisError(f"{tr_id} 오류 [{body.get('msg_cd')}] {body.get('msg1', '')[:150]}")
         return body
 
-    raise KisError(f"{tr_id} 유량 제한으로 {RETRY_ON_THROTTLE}회 재시도 후 실패했습니다")
+    reason = "유량 제한" if last_msg == "EGW00201" else f"일시 오류({last_msg})"
+    raise KisError(f"{tr_id} {reason}으로 {RETRY_ON_THROTTLE}회 재시도 후 실패했습니다")
 
 
 def investor_flow_daily(code: str, end_date: str) -> list[dict]:

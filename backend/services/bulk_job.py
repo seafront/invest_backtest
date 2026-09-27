@@ -11,14 +11,38 @@ import threading
 from datetime import date, datetime
 
 import pandas as pd
-import yfinance as yf
 
 from database import SessionLocal
-from services.data_fetcher import insert_rows
+from services.data_fetcher import insert_rows, yf_download
 from services import fundamentals, investor_flow, kis_client
 
 # 한 번에 요청할 종목 수. 너무 크면 야후가 일부를 조용히 비워서 돌려준다.
 CHUNK = 50
+
+# 이만큼 연달아 실패하면 작업을 멈춘다. 종목 하나의 문제(상장폐지 등)는 흩어져 나오지만,
+# 키 만료·시간 제한·소스 폐지처럼 원인이 공통이면 모든 종목이 같은 이유로 실패한다 —
+# 수급은 종목당 0.6초 이상 쉬므로 200종목을 끝까지 돌면 실패만 쌓으며 몇 분을 쓴다.
+MAX_CONSECUTIVE_FAILURES = 5
+
+
+class _Abort(RuntimeError):
+    """연속 실패로 단계를 멈춘다. 메시지가 그대로 작업 error가 된다."""
+
+
+class _Streak:
+    """연속 실패 수를 센다. 성공 한 번이면 초기화된다."""
+
+    def __init__(self, label: str):
+        self.label = label
+        self.count = 0
+
+    def ok(self) -> None:
+        self.count = 0
+
+    def fail(self, error: Exception | str) -> None:
+        self.count += 1
+        if self.count >= MAX_CONSECUTIVE_FAILURES:
+            raise _Abort(f"{self.label} {self.count}종목 연속 실패로 중단했습니다 — {str(error)[:150]}")
 
 _lock = threading.Lock()
 _job: dict = {
@@ -106,6 +130,7 @@ def _collect_flows(db, tickers: list[str], months: int) -> None:
     if not korean:
         return
 
+    streak = _Streak("수급")
     for ticker in korean:
         try:
             result = investor_flow.sync(db, ticker, months)
@@ -113,11 +138,12 @@ def _collect_flows(db, tickers: list[str], months: int) -> None:
             db.rollback()
             with _lock:
                 _job["failed"].append(f"{ticker} 수급: {str(e)[:80]}")
+                _job["flow_done"] += 1
+            streak.fail(e)
         else:
+            streak.ok()
             with _lock:
                 _job["flow_added"] += result["added"]
-        finally:
-            with _lock:
                 _job["flow_done"] += 1
 
 
@@ -131,6 +157,7 @@ def _collect_fundamentals(db, tickers: list[str]) -> None:
     with _lock:
         _job.update(phase="fundamentals", fund_total=len(tickers))
 
+    streak = _Streak("재무")
     for ticker in tickers:
         try:
             result = fundamentals.sync_best(db, ticker)
@@ -138,11 +165,12 @@ def _collect_fundamentals(db, tickers: list[str]) -> None:
             db.rollback()
             with _lock:
                 _job["failed"].append(f"{ticker} 재무: {str(e)[:80]}")
+                _job["fund_done"] += 1
+            streak.fail(e)
         else:
+            streak.ok()
             with _lock:
                 _job["fund_added"] += result["added"]
-        finally:
-            with _lock:
                 _job["fund_done"] += 1
 
 
@@ -151,13 +179,12 @@ def run_fundamentals(universe: str, tickers: list[str]) -> None:
     db = SessionLocal()
     try:
         _collect_fundamentals(db, tickers)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001 - _Abort 포함, 중단 사유를 상태에 남긴다
         with _lock:
             _job["error"] = str(e)[:200]
     finally:
         db.close()
-        with _lock:
-            _job.update(running=False, phase="", finished_at=datetime.utcnow())
+        _finish()
 
 
 def run(universe: str, tickers: list[str], start_date: date, end_date: date,
@@ -167,11 +194,12 @@ def run(universe: str, tickers: list[str], start_date: date, end_date: date,
     with _lock:
         _job["total"] = len(tickers)
     db = SessionLocal()
+    streak = _Streak("시세")
     try:
         for i in range(0, len(tickers), CHUNK):
             chunk = tickers[i : i + CHUNK]
             try:
-                raw = yf.download(
+                raw = yf_download(
                     chunk, start=str(start_date), end=str(end_date),
                     progress=False, group_by="ticker", threads=True, auto_adjust=True,
                 )
@@ -179,6 +207,9 @@ def run(universe: str, tickers: list[str], start_date: date, end_date: date,
                 with _lock:
                     _job["failed"].extend(f"{t}: {str(e)[:80]}" for t in chunk)
                     _job["done"] += len(chunk)
+                # 청크 전체가 실패했다면 종목 수만큼 연속 실패다.
+                for _ in chunk:
+                    streak.fail(e)
                 continue
 
             for ticker in chunk:
@@ -191,22 +222,29 @@ def run(universe: str, tickers: list[str], start_date: date, end_date: date,
                     db.rollback()
                     with _lock:
                         _job["failed"].append(f"{ticker}: {str(e)[:80]}")
+                        _job["done"] += 1
+                    streak.fail(e)
                 else:
+                    streak.ok()
                     with _lock:
                         _job["added"] += added
-                finally:
-                    with _lock:
                         _job["done"] += 1
         # 시세를 다 받은 뒤에 수급을 받는다. 키가 없으면 조용히 건너뛴다 —
         # 미국 지수를 받는 사람에게 증권사 키를 요구할 이유가 없다.
         if with_flows and kis_client.config()["configured"]:
             _collect_flows(db, tickers, flow_months)
-    except Exception as e:  # noqa: BLE001 - 예기치 못한 중단도 상태에 남긴다
+    except Exception as e:  # noqa: BLE001 - _Abort와 예기치 못한 중단 모두 상태에 남긴다
         with _lock:
             _job["error"] = str(e)[:200]
     finally:
         db.close()
-        with _lock:
-            _job["running"] = False
+        _finish()
+
+
+def _finish() -> None:
+    with _lock:
+        _job["running"] = False
+        # 중단됐으면 어느 단계에서 멈췄는지 화면이 알 수 있게 단계를 남긴다.
+        if not _job["error"]:
             _job["phase"] = ""
-            _job["finished_at"] = datetime.utcnow()
+        _job["finished_at"] = datetime.utcnow()

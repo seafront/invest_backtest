@@ -3,7 +3,8 @@
 KIS API는 한 번에 30거래일만 준다. 종료일을 앞으로 옮기며 반복 호출해 누적한다.
 받아 둔 구간은 다시 받지 않는다 — 유량 제한이 있어 호출 한 번이 아깝다.
 """
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, insert
 from sqlalchemy.orm import Session
@@ -12,6 +13,18 @@ from models import InvestorFlow
 from services import kis_client
 
 WINDOW = 30  # API가 한 번에 주는 거래일 수
+
+# KIS는 당일 수급을 장 마감 집계(15:40 KST)가 끝나기 전에는 주지 않는다. 종료일을
+# 오늘로 넘기면 휴일이어도 00:00~15:40 사이에는 OPSQ2001 "TIME LIMIT"으로 거절된다.
+KST = ZoneInfo("Asia/Seoul")
+SAME_DAY_READY = time(15, 40)
+
+
+def latest_queryable_day(now: datetime | None = None) -> date:
+    """종료일로 넘길 수 있는 가장 최근 날짜. 15:40 KST 전이면 어제다."""
+    now = now or datetime.now(KST)
+    today = now.date()
+    return today if now.time() >= SAME_DAY_READY else today - timedelta(days=1)
 
 # 시세와 같은 구간을 담는다. 화면에서 "시세는 5년인데 수급은 3개월"처럼 갈리면
 # 어느 쪽이 기준인지 알 수 없다. KIS는 6년 전까지 돌려주므로 5년은 받아진다.
@@ -73,8 +86,8 @@ def sync(db: Session, ticker: str, months: int = DEFAULT_MONTHS) -> dict:
         raise ValueError(f"{ticker}: 투자자 매매동향은 한국 종목에만 제공됩니다")
 
     code = to_kis_code(ticker)
-    oldest_wanted = date.today() - timedelta(days=months * 31)
-    end = date.today()
+    end = latest_queryable_day()
+    oldest_wanted = end - timedelta(days=months * 31)
     added, calls = 0, 0
 
     while end > oldest_wanted:
