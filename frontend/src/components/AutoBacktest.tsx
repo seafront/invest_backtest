@@ -195,7 +195,7 @@ export default function AutoBacktest() {
         initial_capital: ran.req.initial_capital,
         monthly_contribution: ran.req.monthly_contribution,
       });
-      // fromAuto: 결과 화면이 "전략 비교로 돌아가기"를 보여 줄지 정한다.
+      // fromAuto: 결과 화면이 "Leaderboard로 돌아가기"를 보여 줄지 정한다.
       navigate(`/results/${res.data.id}`, { state: { ...res.data, fromAuto: true } });
     } catch (err: unknown) {
       setError(errMessage(err));
@@ -297,7 +297,7 @@ export default function AutoBacktest() {
   return (
     <>
       <form onSubmit={handleRun} style={{ background: "#1e1e2e", borderRadius: 8, padding: 24, marginBottom: 24 }}>
-        <h3 style={{ color: INK, marginBottom: 4 }}>전략 비교</h3>
+        <h3 style={{ color: INK, marginBottom: 4 }}>Strategy Leaderboard</h3>
         <p style={{ color: "#64748b", fontSize: 13, marginBottom: 16 }}>
           종목 하나에 등록된 모든 전략을 기본 파라미터로 최근 {YEARS}년(오늘 기준) 돌려 비교합니다.
           결과는 저장되지 않습니다.

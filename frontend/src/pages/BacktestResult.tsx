@@ -61,6 +61,15 @@ export default function BacktestResult() {
     }
   }, [result]);
 
+  // 브라우저 탭에도 어떤 전략의 성과 리포트인지 보이게 한다.
+  useEffect(() => {
+    if (!result) return;
+    document.title = `${result.ticker} ${result.strategy_name.replace(/_/g, " ")} · Tear Sheet — BacktestLab`;
+    return () => {
+      document.title = "BacktestLab";
+    };
+  }, [result]);
+
   if (loading) {
     return <p style={{ color: "#94a3b8", padding: 40, textAlign: "center" }}>Loading...</p>;
   }
@@ -94,9 +103,21 @@ export default function BacktestResult() {
             marginBottom: 12,
           }}
         >
-          ← 전략 비교로 돌아가기
+          ← Leaderboard로 돌아가기
         </button>
       )}
+      <div
+        style={{
+          color: "#64748b",
+          fontSize: 12,
+          fontWeight: 600,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          marginBottom: 4,
+        }}
+      >
+        Strategy Tear Sheet · 전략 성과 리포트
+      </div>
       <h2 style={{ color: "#e2e8f0", marginBottom: 8 }}>
         {result.ticker} — {result.strategy_name.replace(/_/g, " ")}
       </h2>
