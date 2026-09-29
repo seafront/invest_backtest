@@ -4,10 +4,11 @@ import type { AutoStrategyResult, BacktestResult, SimulateResponse, StrategyInfo
 import { listStrategies, runBacktest, simulateParams } from "../api/client";
 import { errMessage } from "../utils/error";
 import { NEGATIVE, POSITIVE, SERIES_COLORS } from "../theme";
-import { WINDOW_OPTIONS, rollingVsBenchmark, windowAllowed } from "../utils/rolling";
+import { WINDOW_OPTIONS, rollingExcess, rollingVsBenchmark, windowAllowed } from "../utils/rolling";
 import { fmtParam, paramLabel } from "../utils/params";
 import AutoReturnChart, { BENCHMARK_COLOR, Swatch, type ChartSeries } from "./AutoReturnChart";
 import RegimeTable from "./RegimeTable";
+import RollingExcessChart, { type ExcessSeries } from "./RollingExcessChart";
 import ParamOptimizer from "./ParamOptimizer";
 
 const MUTED = "#94a3b8";
@@ -92,25 +93,37 @@ export default function ParamCompare({ result, fromAuto }: Props) {
   const schema = info?.params ?? [];
   const dca = result.invest_mode === "dca";
 
+  const curvePoints = sim?.benchmark.curve.length ?? 0;
+  // 고른 길이가 이 기간에 너무 길면 쓸 수 있는 가장 긴 길이로 계산한다. 표와 그래프가 같이 쓴다.
+  const weeks = windowAllowed(windowWeeks, curvePoints)
+    ? windowWeeks
+    : [...WINDOW_OPTIONS].reverse().find((w) => windowAllowed(w.weeks, curvePoints))?.weeks;
+
   // 줄 목록: 원래 결과 + 변형. 응답은 param_sets 순서 그대로다.
   const rows = useMemo(() => {
     if (!sim || sim.results.length !== variants.length + 1) return [];
     const entries = [{ key: "orig", label: "원래", color: 0, variant: null as Variant | null }].concat(
       variants.map((v, i) => ({ key: `v${v.id}`, label: `변형 ${i + 1}`, color: v.color, variant: v }))
     );
-    const points = sim.benchmark.curve.length;
-    const weeks = windowAllowed(windowWeeks, points)
-      ? windowWeeks
-      : [...WINDOW_OPTIONS].reverse().find((w) => windowAllowed(w.weeks, points))?.weeks;
     return entries.map((e, i) => {
       const r = sim.results[i];
       const stats = weeks ? rollingVsBenchmark(r.curve, sim.benchmark.curve, weeks) : null;
       return { ...e, r, stats };
     });
-  }, [sim, variants, windowWeeks]);
+  }, [sim, variants, weeks]);
 
-  const curvePoints = sim?.benchmark.curve.length ?? 0;
-  const windowLabel = WINDOW_OPTIONS.find((w) => w.weeks === windowWeeks)?.label ?? "";
+  const windowLabel = WINDOW_OPTIONS.find((w) => w.weeks === weeks)?.label ?? "";
+
+  const excessSeries: ExcessSeries[] = useMemo(() => {
+    if (!sim || !weeks) return [];
+    return rows.map((row) => ({
+      key: row.key,
+      label: row.label,
+      color: SERIES_COLORS[row.color],
+      points: rollingExcess(row.r.curve, sim.benchmark.curve, weeks),
+      winRate: row.stats?.winRate ?? null,
+    }));
+  }, [sim, rows, weeks]);
 
   // 그래프는 선마다 dataKey가 달라야 한다. 모두 같은 전략이라 줄 key로 이름을 바꿔 넘긴다.
   const chartSeries: ChartSeries[] = useMemo(() => {
@@ -307,6 +320,25 @@ export default function ParamCompare({ result, fromAuto }: Props) {
           <p style={{ color: "#64748b", fontSize: 12, margin: "4px 0 12px" }}>
             {dca ? "그 시점까지 넣은 원금 대비 " : ""}누적 수익률 · 주 단위 · 배경 초록은 상승 구간, 빨강은 하락 구간
           </p>
+
+          {excessSeries.length > 0 && (
+            <>
+              <h4 style={{ color: INK, margin: "8px 0 2px", fontSize: 14 }}>{windowLabel} 롤링 초과수익 (B&H 대비)</h4>
+              <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 6px" }}>
+                각 날짜로 끝나는 {windowLabel} 동안의 전략 수익률 − B&H 수익률. 점선(0) 위면 그 {windowLabel}은 B&H를 이겼습니다.
+                0선 위에 있던 비율이 아래 표의 B&H 승률, 선의 중앙값이 초과 중앙값입니다.
+              </p>
+              <RollingExcessChart
+                series={excessSeries}
+                range={[sim.benchmark.curve[0].date, sim.benchmark.curve[curvePoints - 1].date]}
+                hovered={hovered}
+                regions={sim.regimes}
+              />
+              <p style={{ color: "#64748b", fontSize: 12, margin: "4px 0 12px" }}>
+                첫 {windowLabel}이 끝나기 전은 비어 있습니다 · 비교 구간을 바꾸면 다시 계산됩니다
+              </p>
+            </>
+          )}
 
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>

@@ -2,88 +2,87 @@ import { useMemo } from "react";
 import {
   CartesianGrid,
   Line,
-  ReferenceArea,
   LineChart,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import type { AutoStrategyResult } from "../types";
 import { fmtMonth, niceStep, ts } from "../utils/chart";
+import type { ExcessPoint } from "../utils/rolling";
 import { NEGATIVE, POSITIVE } from "../theme";
+import { Swatch, type ChartRegion } from "./AutoReturnChart";
 
 const MUTED = "#94a3b8";
 const INK = "#e2e8f0";
 const GRID = "#334155";
-/** Buy & Hold는 비교 기준이라 계열 색을 쓰지 않고 회색 점선으로 그린다. */
-export const BENCHMARK_COLOR = "#94a3b8";
 
-const HEIGHT = 320;
+// 위 누적 수익률 그래프와 여백·y축 폭을 맞춰야 같은 가로 위치가 같은 날짜가 된다.
+const HEIGHT = 220;
 const MARGIN = { top: 12, right: 170, bottom: 4, left: 4 };
 const X_AXIS_HEIGHT = 24;
-const LABEL_GAP = 14; // 끝 라벨끼리 최소 세로 간격(px)
+const LABEL_GAP = 14;
 
-export interface ChartSeries {
-  result: AutoStrategyResult;
+export interface ExcessSeries {
+  key: string;
+  label: string;
   color: string;
-  benchmark?: boolean;
-}
-
-/** 배경에 옅게 칠할 추세 구간. 상승은 초록, 하락은 빨강 계열이다. */
-export interface ChartRegion {
-  start: string;
-  end: string;
-  kind: "up" | "down" | "flat";
+  points: ExcessPoint[];
+  /** 0선 위에 있던 점의 비율(%) — 표의 B&H 승률과 같은 값 */
+  winRate: number | null;
 }
 
 interface Props {
-  series: ChartSeries[];
+  series: ExcessSeries[];
+  /** 위 그래프와 같은 x축 범위. 첫 구간이 끝나기 전은 비어 있다. */
+  range: [string, string];
   hovered: string | null;
   regions?: ChartRegion[];
 }
 
-const pct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+const pp = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%p`;
 
-/** 전략별 누적 수익률을 한 축에 겹쳐 그린다. 선이 적을 때만 끝에 이름을 직접 단다. */
-export default function AutoReturnChart({ series, hovered, regions = [] }: Props) {
+/**
+ * 구간 끝 날짜마다 "직전 N주 동안 전략 − B&H"를 그린다. 0선 위면 그 구간은 B&H를 이겼다.
+ * 비교 구간을 바꾸면 선이 다시 계산된다 — 짧을수록 들쭉날쭉, 길수록 매끄럽다.
+ */
+export default function RollingExcessChart({ series, range, hovered, regions = [] }: Props) {
   const { rows, domain, ticks, labelShift } = useMemo(() => {
     const byDate = new Map<number, Record<string, number>>();
     let lo = 0;
     let hi = 0;
     for (const s of series) {
-      for (const p of s.result.curve) {
+      for (const p of s.points) {
         const t = ts(p.date);
         const row = byDate.get(t) ?? { t };
-        row[s.result.strategy_name] = p.ret;
+        row[s.key] = p.excess;
         byDate.set(t, row);
-        lo = Math.min(lo, p.ret);
-        hi = Math.max(hi, p.ret);
+        lo = Math.min(lo, p.excess);
+        hi = Math.max(hi, p.excess);
       }
     }
-    // 눈금이 259%·-1%처럼 어색하지 않도록 1·2·5×10ⁿ 간격에 맞춰 축 범위를 넓힌다.
-    // 전부 0이면(거래가 한 번도 없으면) 범위가 0이 되어 축과 라벨 배치가 깨진다.
     if (hi - lo < 1) {
       lo -= 5;
       hi += 5;
     }
-    const step = niceStep((hi - lo) / 5);
+    const step = niceStep((hi - lo) / 4);
     const dom: [number, number] = [Math.floor(lo / step) * step, Math.ceil(hi / step) * step];
     const tickList: number[] = [];
     for (let v = dom[0]; v <= dom[1] + step / 2; v += step) tickList.push(Math.round(v));
 
-    // 끝 라벨 겹침 풀기. 축 범위를 직접 정했으므로 값→픽셀 환산이 가능하다.
     const plotH = HEIGHT - MARGIN.top - MARGIN.bottom - X_AXIS_HEIGHT;
     const pxPerUnit = plotH / (dom[1] - dom[0]);
     const ends = series
-      .map((s) => ({ name: s.result.strategy_name, y: -s.result.total_return * pxPerUnit }))
+      .filter((s) => s.points.length > 0)
+      .map((s) => ({ key: s.key, y: -s.points[s.points.length - 1].excess * pxPerUnit }))
       .sort((a, b) => a.y - b.y);
     const shift: Record<string, number> = {};
     let prev = -Infinity;
     for (const e of ends) {
       const placed = Math.max(e.y, prev + LABEL_GAP);
-      shift[e.name] = placed - e.y;
+      shift[e.key] = placed - e.y;
       prev = placed;
     }
     return {
@@ -94,7 +93,7 @@ export default function AutoReturnChart({ series, hovered, regions = [] }: Props
     };
   }, [series]);
 
-  if (series.length === 0) return null;
+  if (rows.length === 0) return null;
   const lastIndex = rows.length - 1;
 
   return (
@@ -105,7 +104,7 @@ export default function AutoReturnChart({ series, hovered, regions = [] }: Props
           dataKey="t"
           type="number"
           scale="time"
-          domain={["dataMin", "dataMax"]}
+          domain={[ts(range[0]), ts(range[1])]}
           tickFormatter={fmtMonth}
           tick={{ fill: MUTED, fontSize: 11 }}
           stroke={GRID}
@@ -115,7 +114,7 @@ export default function AutoReturnChart({ series, hovered, regions = [] }: Props
         <YAxis
           domain={domain}
           ticks={ticks}
-          tickFormatter={(v: number) => `${v}%`}
+          tickFormatter={(v: number) => `${v}%p`}
           tick={{ fill: MUTED, fontSize: 11 }}
           stroke={GRID}
           width={52}
@@ -133,7 +132,8 @@ export default function AutoReturnChart({ series, hovered, regions = [] }: Props
               ifOverflow="hidden"
             />
           ))}
-        <ReferenceLine y={0} stroke={MUTED} strokeOpacity={0.6} />
+        {/* 0선 = B&H와 같은 수익. 위 그래프의 B&H 점선과 같은 모양으로 기준임을 알린다. */}
+        <ReferenceLine y={0} stroke={MUTED} strokeDasharray="5 4" />
         <Tooltip
           cursor={{ stroke: MUTED, strokeDasharray: "3 3" }}
           content={({ active, label, payload }) => {
@@ -141,14 +141,19 @@ export default function AutoReturnChart({ series, hovered, regions = [] }: Props
             const items = [...payload].sort((a, b) => Number(b.value) - Number(a.value));
             return (
               <div style={{ background: "#0f172a", border: `1px solid ${GRID}`, borderRadius: 6, padding: "8px 10px", fontSize: 12 }}>
-                <div style={{ color: MUTED, marginBottom: 4 }}>{new Date(Number(label)).toISOString().slice(0, 10)}</div>
+                <div style={{ color: MUTED, marginBottom: 4 }}>
+                  {new Date(Number(label)).toISOString().slice(0, 10)}로 끝나는 구간 · B&H 대비
+                </div>
                 {items.map((it) => {
-                  const s = series.find((x) => x.result.strategy_name === it.dataKey);
+                  const s = series.find((x) => x.key === it.dataKey);
+                  const v = Number(it.value);
                   return (
                     <div key={String(it.dataKey)} style={{ display: "flex", alignItems: "center", gap: 6, color: INK }}>
-                      <Swatch color={s?.color ?? MUTED} dashed={s?.benchmark} />
-                      <span style={{ flex: 1 }}>{s?.result.display_name}</span>
-                      <span style={{ fontVariantNumeric: "tabular-nums", marginLeft: 12 }}>{pct(Number(it.value))}</span>
+                      <Swatch color={s?.color ?? MUTED} />
+                      <span style={{ flex: 1 }}>{s?.label}</span>
+                      <span style={{ fontVariantNumeric: "tabular-nums", marginLeft: 12, color: v >= 0 ? POSITIVE : NEGATIVE }}>
+                        {pp(v)}
+                      </span>
                     </div>
                   );
                 })}
@@ -157,34 +162,34 @@ export default function AutoReturnChart({ series, hovered, regions = [] }: Props
           }}
         />
         {series.map((s) => {
-          const name = s.result.strategy_name;
-          const dim = hovered !== null && hovered !== name;
+          const dim = hovered !== null && hovered !== s.key;
           return (
             <Line
-              key={name}
-              dataKey={name}
+              key={s.key}
+              dataKey={s.key}
               stroke={s.color}
-              strokeWidth={hovered === name ? 3 : 2}
+              strokeWidth={hovered === s.key ? 3 : 2}
               strokeOpacity={dim ? 0.2 : 1}
-              strokeDasharray={s.benchmark ? "5 4" : undefined}
               dot={false}
               activeDot={{ r: 4, stroke: "#1e1e2e", strokeWidth: 2 }}
               isAnimationActive={false}
+              connectNulls
               label={(p: { x?: number | string; y?: number | string; index?: number }) =>
                 p.index === lastIndex && typeof p.x === "number" && typeof p.y === "number" ? (
                   <text
-                    key={`${name}-end`}
+                    key={`${s.key}-end`}
                     x={p.x + 8}
-                    y={p.y + (labelShift[name] ?? 0)}
+                    y={p.y + (labelShift[s.key] ?? 0)}
                     dy={4}
                     fill={INK}
                     fillOpacity={dim ? 0.3 : 1}
                     fontSize={11}
                   >
-                    {truncate(s.result.display_name, 16)} {pct(s.result.total_return)}
+                    {s.label}
+                    {s.winRate !== null && ` 승률 ${s.winRate.toFixed(0)}%`}
                   </text>
                 ) : (
-                  <g key={`${name}-${p.index}`} />
+                  <g key={`${s.key}-${p.index}`} />
                 )
               }
             />
@@ -194,13 +199,3 @@ export default function AutoReturnChart({ series, hovered, regions = [] }: Props
     </ResponsiveContainer>
   );
 }
-
-export function Swatch({ color, dashed }: { color: string; dashed?: boolean }) {
-  return (
-    <svg width={16} height={8} aria-hidden style={{ flexShrink: 0 }}>
-      <line x1={0} y1={4} x2={16} y2={4} stroke={color} strokeWidth={2} strokeDasharray={dashed ? "4 3" : undefined} />
-    </svg>
-  );
-}
-
-const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);

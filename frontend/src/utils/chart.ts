@@ -36,3 +36,11 @@ export function evenTicks([from, to]: [number, number], count = 8): number[] {
   const step = (to - from) / (count - 1);
   return Array.from({ length: count }, (_, i) => Math.round(from + step * i));
 }
+
+/** 축 눈금 간격을 1·2·5×10ⁿ 중 raw 이상인 가장 작은 값으로 올린다. */
+export function niceStep(raw: number): number {
+  if (raw <= 0) return 10;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const f = raw / mag;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
+}

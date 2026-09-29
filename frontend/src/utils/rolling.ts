@@ -34,19 +34,35 @@ export const WINDOW_OPTIONS = [
  */
 export const windowAllowed = (weeks: number, points: number) => weeks * 2 <= points;
 
-export function rollingVsBenchmark(curve: CurvePoint[], bench: CurvePoint[], weeks: number): RollingStats | null {
+export interface ExcessPoint {
+  /** 구간 끝 날짜 */
+  date: string;
+  /** 그 날짜로 끝나는 구간의 전략 수익률 − B&H 수익률(%p) */
+  excess: number;
+}
+
+/**
+ * 구간 끝 날짜별 초과수익. 그래프가 이 점들을 그대로 그리고, 표의 승률·중앙값도
+ * 같은 점에서 나온다 — 그래프와 표가 늘 같은 이야기를 하도록.
+ */
+export function rollingExcess(curve: CurvePoint[], bench: CurvePoint[], weeks: number): ExcessPoint[] {
   const benchByDate = new Map(bench.map((p) => [p.date, p.idx]));
   // 같은 데이터로 돌린 결과라 날짜가 같지만, 어긋나도 틀리지 않게 공통 날짜만 쓴다.
   const pts = curve
     .filter((p) => benchByDate.has(p.date))
-    .map((p) => ({ s: p.idx, b: benchByDate.get(p.date)! }));
-  const excess: number[] = [];
+    .map((p) => ({ date: p.date, s: p.idx, b: benchByDate.get(p.date)! }));
+  const out: ExcessPoint[] = [];
   for (let i = 0; i + weeks < pts.length; i++) {
     const a = pts[i];
     const z = pts[i + weeks];
     if (a.s <= 0 || a.b <= 0) continue;
-    excess.push((z.s / a.s - z.b / a.b) * 100);
+    out.push({ date: z.date, excess: (z.s / a.s - z.b / a.b) * 100 });
   }
+  return out;
+}
+
+export function rollingVsBenchmark(curve: CurvePoint[], bench: CurvePoint[], weeks: number): RollingStats | null {
+  const excess = rollingExcess(curve, bench, weeks).map((p) => p.excess);
   if (excess.length === 0) return null;
   const sorted = [...excess].sort((x, y) => x - y);
   const mid = sorted.length >> 1;
