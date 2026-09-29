@@ -27,6 +27,14 @@ class MACDStrategy(Strategy):
         signals = []
         position = False
 
+        # 지표가 처음 계산된 날 이미 교차 이후 상태면 그날 진입한다. 교차 "순간"만 보면
+        # 지표가 준비되기 전에 일어난 교차를 영영 놓쳐, 다음 반대 교차까지 기다리게 된다
+        # (TQQQ 50/200은 2020년 교차를 놓치고 2023-04에야 첫 매수를 했다). 백테스트는 시작일
+        # 전 준비 구간부터 신호를 계산하므로, 이 진입은 준비 구간에서 일어나 시작일 보유로 이어진다.
+        if len(df) and df.iloc[0]["macd"] > df.iloc[0]["signal"]:
+            signals.append(Signal(date=str(df.iloc[0]["date"]), action="BUY"))
+            position = True
+
         for i in range(1, len(df)):
             prev_macd = df.iloc[i - 1]["macd"]
             prev_signal = df.iloc[i - 1]["signal"]

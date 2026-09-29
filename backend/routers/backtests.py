@@ -231,7 +231,11 @@ def auto_backtest(req: AutoBacktestRequest, db: Session = Depends(get_db)):
     for strategy in list_strategies():
         params = {p["name"]: p["default"] for p in strategy.param_schema}
         try:
-            r = run_backtest(df, strategy.name, params, req.initial_capital,
+            # 전략마다 자기 준비 구간만큼만 잘라 쓴다. 가장 긴 구간(Golden Cross)으로 다 돌리면
+            # SAR·EMA처럼 첫 봉부터 재귀로 쌓는 지표는 /run 과 다른 신호를 내, Auto 표와
+            # 상세 보기 결과가 어긋났다.
+            frame = df[df["date"] >= start - timedelta(days=warmup_days(strategy.name, params))]
+            r = run_backtest(frame, strategy.name, params, req.initial_capital,
                              req.monthly_contribution, req.invest_mode, trade_start=start)
         except Exception as e:  # noqa: BLE001 - 전략 하나가 실패해도 나머지는 비교한다
             logger.warning(f"Auto backtest failed for {ticker}/{strategy.name}: {e}")

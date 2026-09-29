@@ -109,6 +109,11 @@ BacktestResult · `/strategies` Strategies · `/screener` Screener
   trading, DCA deposits and the equity curve start at `start_date`. If the last warm-up
   signal was BUY, the strategy buys on day one. New lookback params must end in
   `period` to be counted. The Screener still runs without warm-up.
+- **Crossover strategies read state on their first valid bar.** Golden Cross, MA/EMA
+  crossover, MACD and Parabolic SAR emit BUY on the first bar where their indicators
+  exist if the lines are already crossed, instead of waiting for the next cross.
+  Otherwise a cross that happened before the indicators were ready is never seen.
+  New crossover-style strategies should do the same.
 - **Invest modes:** `lump_sum` (initial capital) and `dca` (monthly_contribution,
   dollar-cost averaging). The engine handles both in one loop in `backtest_engine.py`.
 - **equity_curve** is stored as a JSON column on `backtests` (list of `{date, equity}`),
