@@ -285,8 +285,12 @@ def simulate(req: SimulateRequest, db: Session = Depends(get_db)):
     data_start, data_end = _trading_span(df, req.start_date)
 
     def run(strat, params: dict) -> tuple[dict, float]:
+        # 조합마다 자기 준비 구간만큼만 잘라 쓴다 (/auto 와 같다). 가장 긴 준비 구간으로 다 돌리면
+        # EMA·SAR처럼 첫 봉부터 재귀로 쌓는 지표가, 준비 구간이 더 긴 변형을 추가할 때마다 "원래" 줄의
+        # 신호를 바꿔 결과 화면의 지표와 어긋났다.
+        frame = df[df["date"] >= req.start_date - timedelta(days=warmup_days(strat.name, params))]
         try:
-            r = run_backtest(df, strat.name, params, req.initial_capital,
+            r = run_backtest(frame, strat.name, params, req.initial_capital,
                              req.monthly_contribution, req.invest_mode, trade_start=req.start_date)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
