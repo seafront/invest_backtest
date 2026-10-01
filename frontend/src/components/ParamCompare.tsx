@@ -6,6 +6,7 @@ import { errMessage } from "../utils/error";
 import { NEGATIVE, POSITIVE, SERIES_COLORS } from "../theme";
 import { WINDOW_OPTIONS, rollingExcess, rollingVsBenchmark, windowAllowed } from "../utils/rolling";
 import { fmtParam, paramLabel } from "../utils/params";
+import { isFullPeriod, type Period } from "../utils/period";
 import AutoReturnChart, { BENCHMARK_COLOR, Swatch, type ChartSeries } from "./AutoReturnChart";
 import RegimeTable from "./RegimeTable";
 import RollingExcessChart, { type ExcessSeries } from "./RollingExcessChart";
@@ -20,6 +21,7 @@ const GRID = "#334155";
  */
 const MAX_VARIANTS = 3;
 
+
 interface Variant {
   id: number;
   /** 색 번호. 변형을 지워도 남은 변형의 색이 바뀌지 않도록 변형에 붙인다. 원래 결과는 0. */
@@ -28,7 +30,10 @@ interface Variant {
 }
 
 interface Props {
+  /** 저장된 결과 (원래 파라미터·투자 방식). */
   result: BacktestResult;
+  /** 페이지 위에서 고른 계산 구간. 잘못 입력돼 있으면 null. */
+  period: Period | null;
   /** Auto 비교에서 들어왔는지. 변형을 저장해 이동할 때도 "비교로 돌아가기"를 유지한다. */
   fromAuto: boolean;
 }
@@ -41,7 +46,7 @@ const sameParams = (a: Record<string, number>, b: Record<string, number>) =>
  * 결과 화면에서 파라미터를 바꿔 가며 같은 구간·같은 투자 방식으로 다시 돌려 비교한다.
  * 저장하지 않고 계산만 한다(/backtests/simulate). 마음에 드는 변형만 저장한다.
  */
-export default function ParamCompare({ result, fromAuto }: Props) {
+export default function ParamCompare({ result, period, fromAuto }: Props) {
   const navigate = useNavigate();
   const [info, setInfo] = useState<StrategyInfo | null>(null);
   const [draft, setDraft] = useState<Record<string, number>>(result.params);
@@ -53,6 +58,7 @@ export default function ParamCompare({ result, fromAuto }: Props) {
   const [windowWeeks, setWindowWeeks] = useState(52);
   const [hovered, setHovered] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const fullPeriod = !period || isFullPeriod(period, result);
 
   useEffect(() => {
     listStrategies()
@@ -61,15 +67,16 @@ export default function ParamCompare({ result, fromAuto }: Props) {
   }, [result.strategy_name]);
 
   // 원래 파라미터와 변형 전부를 한 번에 다시 계산한다. 시세를 한 번만 읽어 빠르다(0.3초 안팎).
-  const requestKey = JSON.stringify(variants.map((v) => v.params));
+  const requestKey = JSON.stringify([period, variants.map((v) => v.params)]);
   useEffect(() => {
+    if (!period) return;
     let cancelled = false;
-    const key = JSON.stringify(variants.map((v) => v.params));
+    const key = JSON.stringify([period, variants.map((v) => v.params)]);
     simulateParams({
       ticker: result.ticker,
       strategy_name: result.strategy_name,
-      start_date: result.start_date,
-      end_date: result.end_date,
+      start_date: period.start,
+      end_date: period.end,
       invest_mode: result.invest_mode,
       initial_capital: result.initial_capital,
       monthly_contribution: result.monthly_contribution,
@@ -84,9 +91,9 @@ export default function ParamCompare({ result, fromAuto }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [result, variants]);
+  }, [result, variants, period]);
 
-  const loading = fetched?.key !== requestKey;
+  const loading = !!period && fetched?.key !== requestKey;
   // 새 요청을 계산하는 동안에는 직전 결과를 그대로 보여 준다. 줄 수가 맞지 않으면 아래에서 거른다.
   const sim = fetched?.sim ?? null;
   const error = actionError || (fetched?.key === requestKey ? fetched.error : "");
@@ -164,6 +171,7 @@ export default function ParamCompare({ result, fromAuto }: Props) {
   };
 
   const saveVariant = async (params: Record<string, number>, key: string) => {
+    if (!period) return;
     setSaving(key);
     setActionError("");
     try {
@@ -171,8 +179,8 @@ export default function ParamCompare({ result, fromAuto }: Props) {
         ticker: result.ticker,
         strategy_name: result.strategy_name,
         params,
-        start_date: result.start_date,
-        end_date: result.end_date,
+        start_date: period.start,
+        end_date: period.end,
         invest_mode: result.invest_mode,
         initial_capital: result.initial_capital,
         monthly_contribution: result.monthly_contribution,
@@ -213,7 +221,7 @@ export default function ParamCompare({ result, fromAuto }: Props) {
     <div style={{ background: "#1e1e2e", borderRadius: 8, padding: 20, marginBottom: 24 }}>
       <h3 style={{ color: INK, margin: "0 0 4px", fontSize: 16 }}>파라미터 비교</h3>
       <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 14px" }}>
-        값을 바꿔 같은 구간·같은 투자 방식으로 다시 계산합니다. 저장하지 않으며, 마음에 드는 변형만 저장할 수 있습니다.
+        값을 바꿔 위에서 고른 계산 구간·같은 투자 방식으로 다시 계산합니다. 저장하지 않으며, 마음에 드는 변형만 저장할 수 있습니다.
         같은 데이터로 고른 값은 실제보다 좋아 보이기 쉬우니, 주변 값에서도 결과가 비슷한지 함께 보세요.
       </p>
 
@@ -276,7 +284,7 @@ export default function ParamCompare({ result, fromAuto }: Props) {
               <div style={{ display: "flex", background: "#0f172a", border: `1px solid ${GRID}`, borderRadius: 6, padding: 2 }}>
                 {WINDOW_OPTIONS.map((w) => {
                   const ok = windowAllowed(w.weeks, curvePoints);
-                  const active = windowWeeks === w.weeks;
+                  const active = weeks === w.weeks; // 고른 길이가 이 구간에 너무 길면 실제로 쓰는 길이를 표시한다
                   return (
                     <button
                       key={w.weeks}
@@ -401,12 +409,23 @@ export default function ParamCompare({ result, fromAuto }: Props) {
                     <td style={{ ...num, color: INK }}>-{row.r.max_drawdown.toFixed(1)}%</td>
                     <td style={{ ...num, color: INK }}>{row.r.trades_count}</td>
                     <td style={{ padding: "6px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      {!row.variant && !fullPeriod && (
+                        <button
+                          type="button"
+                          onClick={() => saveVariant(row.r.params, row.key)}
+                          disabled={saving !== null || !period}
+                          title="원래 파라미터를 이 계산 구간으로 저장합니다"
+                          style={smallBtn("#3b82f6")}
+                        >
+                          {saving === row.key ? "저장 중…" : "이 구간으로 저장"}
+                        </button>
+                      )}
                       {row.variant && (
                         <>
                           <button
                             type="button"
                             onClick={() => saveVariant(row.r.params, row.key)}
-                            disabled={saving !== null}
+                            disabled={saving !== null || !period}
                             style={{ ...smallBtn("#3b82f6"), marginRight: 6 }}
                           >
                             {saving === row.key ? "저장 중…" : "저장"}
@@ -452,7 +471,7 @@ export default function ParamCompare({ result, fromAuto }: Props) {
         </>
       )}
 
-      <ParamOptimizer result={result} onAdd={addParams} />
+      <ParamOptimizer result={result} period={period} onAdd={addParams} />
     </div>
   );
 }

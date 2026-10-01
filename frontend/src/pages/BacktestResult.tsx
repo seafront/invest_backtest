@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import type { BacktestResult as Result, StockData } from "../types";
 import { getBacktest, getStockData } from "../api/client";
@@ -9,6 +9,8 @@ import CandlestickChart from "../components/CandlestickChart";
 import TradeLog from "../components/TradeLog";
 import StrategyParamsPanel from "../components/StrategyParamsPanel";
 import ParamCompare from "../components/ParamCompare";
+import PeriodPicker from "../components/PeriodPicker";
+import { fullPeriodOf, isFullPeriod, periodError, type Period } from "../utils/period";
 import { NEGATIVE } from "../theme";
 import { currencyOf, fmtMoney } from "../utils/money";
 
@@ -29,7 +31,7 @@ export default function BacktestResult() {
 
   // effect 본문에서 동기 setState를 하지 않도록 세 값을 모두 파생시킨다.
   const current = fetched?.id === id ? fetched : null;
-  const result = fromNav ?? current?.result ?? null;
+  const saved = fromNav ?? current?.result ?? null;
   const error = fromNav ? "" : current?.error ?? "";
   const loading = !fromNav && !!id && current === null;
 
@@ -47,6 +49,39 @@ export default function BacktestResult() {
       cancelled = true;
     };
   }, [id, fromNav]);
+
+  // 계산 구간. 결과마다 따로 두어, 다른 결과로 이동하면 전체 구간으로 돌아간다.
+  const [chosen, setChosen] = useState<{ id: number; period: Period } | null>(null);
+  const period = useMemo<Period | null>(() => {
+    if (!saved) return null;
+    return chosen?.id === saved.id ? chosen.period : fullPeriodOf(saved);
+  }, [saved, chosen]);
+  const validPeriod = saved && period && !periodError(period, saved) ? period : null;
+  const narrowed = !!saved && !!validPeriod && !isFullPeriod(validPeriod, saved);
+
+  // 좁힌 구간의 결과는 저장하지 않고 서버에서 다시 돌려 받는다.
+  const [view, setView] = useState<{ key: string; result: Result | null; error: string } | null>(null);
+  const viewKey = saved && validPeriod ? `${saved.id}|${validPeriod.start}|${validPeriod.end}` : "";
+  useEffect(() => {
+    if (!saved || !validPeriod || !narrowed) return;
+    let cancelled = false;
+    const key = `${saved.id}|${validPeriod.start}|${validPeriod.end}`;
+    getBacktest(saved.id, validPeriod)
+      .then((r) => {
+        if (!cancelled) setView({ key, result: r.data, error: "" });
+      })
+      .catch((err: unknown) => {
+        // 실패해도 직전 구간 화면은 남겨 두고 사유만 보여 준다.
+        if (!cancelled) setView((prev) => ({ key, result: prev?.result ?? null, error: errMessage(err, "구간 결과를 계산하지 못했습니다") }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [saved, validPeriod, narrowed]);
+  const viewReady = view?.key === viewKey ? view : null;
+  const viewLoading = narrowed && !viewReady;
+  // 위 지표·그래프·매매 기록에 쓰는 결과. 새 구간을 계산하는 동안에는 직전 구간 화면을 유지한다.
+  const result = narrowed && view?.result && view.result.id === saved?.id ? view.result : saved;
 
   useEffect(() => {
     if (result) {
@@ -78,7 +113,7 @@ export default function BacktestResult() {
     return <p style={{ color: NEGATIVE, padding: 40 }}>{error}</p>;
   }
 
-  if (!result) {
+  if (!result || !saved || !period) {
     return <p style={{ color: NEGATIVE, padding: 40 }}>Backtest not found.</p>;
   }
 
@@ -122,7 +157,7 @@ export default function BacktestResult() {
         {result.ticker} — {result.strategy_name.replace(/_/g, " ")}
       </h2>
       <p style={{ color: "#64748b", marginBottom: 20, fontSize: 14 }}>
-        {result.start_date} ~ {result.end_date}
+        {saved.start_date} ~ {saved.end_date}
         {(result.invest_mode || "lump_sum") === "dca" ? (
           <span> · DCA (적립식) Monthly: {fmtMoney(result.monthly_contribution || 0, currencyOf(result.ticker))}</span>
         ) : (
@@ -130,9 +165,17 @@ export default function BacktestResult() {
         )}
       </p>
 
-      <StrategyParamsPanel strategyName={result.strategy_name} params={result.params} />
+      <PeriodPicker
+        saved={saved}
+        period={period}
+        onChange={(p) => setChosen({ id: saved.id, period: p })}
+        loading={viewLoading}
+      />
+      {viewReady?.error && <p style={{ color: NEGATIVE, fontSize: 13, margin: "-12px 0 16px" }}>{viewReady.error}</p>}
+
+      <StrategyParamsPanel strategyName={saved.strategy_name} params={saved.params} />
       {/* key: 다른 결과로 이동하면 변형 목록을 비운다 — 이전 결과 기준의 변형이 남지 않게 */}
-      <ParamCompare key={result.id} result={result} fromAuto={fromAuto} />
+      <ParamCompare key={saved.id} result={saved} period={validPeriod} fromAuto={fromAuto} />
 
       <MetricsPanel
         currency={currencyOf(result.ticker)}

@@ -79,7 +79,8 @@ BacktestResult · `/strategies` Strategies · `/screener` Screener
 ### API (base `http://localhost:8000/api`)
 - `POST /stocks/fetch` · `GET /stocks/{ticker}` · `GET /stocks/`
 - `GET /strategies/`
-- `POST /backtests/run` · `GET /backtests/` (last 50) · `GET /backtests/{id}` · `DELETE /backtests/{id}`
+- `POST /backtests/run` · `GET /backtests/` (last 50) · `GET /backtests/{id}` (`?start=&end=` reruns it
+  over a narrower window inside the saved range, not saved) · `DELETE /backtests/{id}`
 - Not saved: `POST /backtests/auto` (one ticker × all strategies) · `POST /backtests/simulate`
   (one strategy × param sets, with trend regimes) · `POST /backtests/optimize` → job id,
   `GET /backtests/optimize/{id}` (goal-based param search, `services/optimizer.py`; in-memory,

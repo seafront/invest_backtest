@@ -395,10 +395,21 @@ def list_backtests(db: Session = Depends(get_db)):
 
 
 @router.get("/{backtest_id}", response_model=BacktestResult)
-def get_backtest(backtest_id: int, db: Session = Depends(get_db)):
+def get_backtest(backtest_id: int, start: date_type | None = None, end: date_type | None = None,
+                 db: Session = Depends(get_db)):
+    """저장된 결과. start/end 를 주면 저장된 구간 안의 그 구간으로 다시 돌려 보여 준다(저장하지 않음).
+
+    전체 기간에 맞춘 파라미터가 최근 시세에도 통하는지 Tear Sheet 에서 좁혀 보려는 용도다.
+    지표는 구간 앞 시세로 준비해 두므로, 그때 이미 매수 상태면 첫날 산다.
+    """
     backtest = db.query(Backtest).filter(Backtest.id == backtest_id).first()
     if not backtest:
         raise HTTPException(status_code=404, detail="Backtest not found")
+
+    start = start or backtest.start_date
+    end = end or backtest.end_date
+    if (start, end) != (backtest.start_date, backtest.end_date):
+        return _backtest_over_period(db, backtest, start, end)
 
     trades = [
         {"date": t.date, "action": t.action, "price": t.price, "shares": t.shares, "pnl": t.pnl}
@@ -440,6 +451,44 @@ def get_backtest(backtest_id: int, db: Session = Depends(get_db)):
         "equity_curve": backtest.equity_curve or [],
         "trades": trades,
         "indicators": indicators,
+        "created_at": backtest.created_at,
+    }
+
+
+def _backtest_over_period(db: Session, backtest: Backtest, start: date_type, end: date_type) -> dict:
+    if start < backtest.start_date or end > backtest.end_date:
+        raise HTTPException(status_code=400,
+                            detail=f"{backtest.start_date} ~ {backtest.end_date} 안에서 고르세요")
+    if start >= end:
+        raise HTTPException(status_code=400, detail="시작일이 종료일보다 앞이어야 합니다")
+    invest_mode = backtest.invest_mode or "lump_sum"
+    monthly = backtest.monthly_contribution or 0.0
+    df = _load_with_warmup(db, backtest.ticker, start, end,
+                           warmup_days(backtest.strategy_name, backtest.params))
+    try:
+        result = run_backtest(df, backtest.strategy_name, backtest.params, backtest.initial_capital,
+                              monthly, invest_mode, trade_start=start)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "id": backtest.id,
+        "ticker": backtest.ticker,
+        "strategy_name": backtest.strategy_name,
+        "params": backtest.params,
+        "start_date": start,
+        "end_date": end,
+        "invest_mode": invest_mode,
+        "initial_capital": backtest.initial_capital,
+        "monthly_contribution": monthly,
+        "total_invested": result["total_invested"],
+        "total_return": result["total_return"],
+        "cagr": result["cagr"],
+        "sharpe_ratio": result["sharpe_ratio"],
+        "max_drawdown": result["max_drawdown"],
+        "win_rate": result["win_rate"],
+        "equity_curve": result["equity_curve"],
+        "trades": result["trades"],
+        "indicators": result["indicators"],
         "created_at": backtest.created_at,
     }
 

@@ -135,8 +135,9 @@ export const getOptimizeJob = (id: string) => api.get<OptimizeJob>(`/backtests/o
 export const listBacktests = () =>
   api.get<BacktestSummary[]>("/backtests/");
 
-export const getBacktest = (id: number) =>
-  api.get<BacktestResult>(`/backtests/${id}`);
+/** period 를 주면 저장된 구간 안의 그 구간으로 다시 돌려 받는다(저장하지 않음). */
+export const getBacktest = (id: number, period?: { start: string; end: string }) =>
+  api.get<BacktestResult>(`/backtests/${id}`, { params: period });
 
 export const deleteBacktest = (id: number) =>
   api.delete(`/backtests/${id}`);

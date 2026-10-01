@@ -14,6 +14,7 @@ import { errMessage } from "../utils/error";
 import { NEGATIVE, POSITIVE, SERIES_COLORS } from "../theme";
 import { fmtParam, paramLabel } from "../utils/params";
 import ScoreHeatmap, { type HeatCell } from "./ScoreHeatmap";
+import type { Period } from "../utils/period";
 
 const MUTED = "#94a3b8";
 const INK = "#e2e8f0";
@@ -52,6 +53,8 @@ const same = (a: Record<string, number> | null, b: Record<string, number>) =>
 
 interface Props {
   result: BacktestResult;
+  /** 파라미터 비교에서 고른 계산 구간. 잘못 입력돼 있으면 null. */
+  period: Period | null;
   /** 파라미터 비교에 변형으로 넣는다. 넣지 못하면 사유를 돌려준다. */
   onAdd: (params: Record<string, number>) => string | null;
 }
@@ -60,7 +63,10 @@ interface Props {
  * 투자 목표에 맞는 파라미터 찾기. 앞 60% 기간으로 고르고 뒤 40%로 검증하며, 한 점의 최고점이
  * 아니라 주변까지 고르게 좋은 값(고원)을 추천한다.
  */
-export default function ParamOptimizer({ result, onAdd }: Props) {
+/** 선택 60% / 검증 40% 로 나누려면 이만큼은 있어야 한다 (백엔드 /optimize 와 같은 기준). */
+const MIN_DAYS = 365;
+
+export default function ParamOptimizer({ result, period, onAdd }: Props) {
   const [goals, setGoals] = useState<OptimizeGoalInfo[]>([]);
   const [goal, setGoal] = useState<OptimizeGoal>("consistency");
   const [maxMdd, setMaxMdd] = useState<number | "">("");
@@ -98,7 +104,11 @@ export default function ParamOptimizer({ result, onAdd }: Props) {
     };
   }, [jobId]);
 
+  const spanDays = period ? (Date.parse(period.end) - Date.parse(period.start)) / 86_400_000 : 0;
+  const periodBlock = !period ? "계산 구간을 먼저 바르게 입력하세요" : spanDays < MIN_DAYS ? "계산 구간이 1년 이상이어야 선택·검증 구간으로 나눌 수 있습니다" : "";
+
   const run = async () => {
+    if (!period || periodBlock) return;
     setStartError("");
     setNotice("");
     setJob(null);
@@ -106,8 +116,8 @@ export default function ParamOptimizer({ result, onAdd }: Props) {
       const r = await startOptimize({
         ticker: result.ticker,
         strategy_name: result.strategy_name,
-        start_date: result.start_date,
-        end_date: result.end_date,
+        start_date: period.start,
+        end_date: period.end,
         invest_mode: result.invest_mode,
         initial_capital: result.initial_capital,
         monthly_contribution: result.monthly_contribution,
@@ -193,20 +203,24 @@ export default function ParamOptimizer({ result, onAdd }: Props) {
         <button
           type="button"
           onClick={run}
-          disabled={running}
+          disabled={running || !!periodBlock}
+          title={periodBlock || undefined}
           style={{
-            background: running ? GRID : "#3b82f6",
+            background: running || periodBlock ? GRID : "#3b82f6",
             color: "#fff",
             border: "none",
             borderRadius: 6,
             padding: "8px 18px",
             fontSize: 14,
             fontWeight: 600,
-            cursor: running ? "wait" : "pointer",
+            cursor: running ? "wait" : periodBlock ? "not-allowed" : "pointer",
           }}
         >
           {running ? "찾는 중…" : "최적값 찾기"}
         </button>
+        <span style={{ color: periodBlock ? "#f59e0b" : "#64748b", fontSize: 12 }}>
+          {periodBlock || (period && `${period.start} ~ ${period.end} 에서 찾습니다`)}
+        </span>
       </div>
 
       {running && job && job.total > 0 && (

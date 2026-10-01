@@ -10,3 +10,9 @@ export function yearsAgo(n: number): string {
   d.setFullYear(d.getFullYear() - n);
   return isoDay(d);
 }
+
+/** YYYY-MM-DD 날짜에서 n개월 전 날짜 (YYYY-MM-DD). 달 끝은 Date 규칙대로 넘어간다. */
+export function monthsBefore(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return isoDay(new Date(y, m - 1 - n, d));
+}
