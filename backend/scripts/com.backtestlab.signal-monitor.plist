@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.backtestlab.signal-monitor</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/sanghoonchoi/Desktop/git/invest_backtest/backend/venv/bin/python</string>
+    <string>/Users/sanghoonchoi/Desktop/git/invest_backtest/backend/scripts/signal_monitor.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/sanghoonchoi/Desktop/git/invest_backtest/backend</string>
+
+  <!-- 07:10 미국장 마감(한국 시간 05:00~06:00) 뒤, 16:40 한국장 마감(15:30) 뒤.
+       잠자기 중이었으면 깨어난 뒤 한 번 돈다. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Hour</key><integer>7</integer>
+      <key>Minute</key><integer>10</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>16</integer>
+      <key>Minute</key><integer>40</integer>
+    </dict>
+  </array>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/sanghoonchoi/Desktop/git/invest_backtest/backend/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sanghoonchoi/Desktop/git/invest_backtest/backend/logs/launchd.err.log</string>
+</dict>
+</plist>

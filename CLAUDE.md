@@ -74,7 +74,7 @@ frontend/src/
 
 ### Routes (frontend)
 `/` Dashboard · `/data` DataManager · `/backtest` BacktestRun · `/results/:id`
-BacktestResult · `/strategies` Strategies · `/screener` Screener
+BacktestResult · `/strategies` Strategies · `/screener` Screener · `/signals` Signals
 
 ### API (base `http://localhost:8000/api`)
 - `POST /stocks/fetch` · `GET /stocks/{ticker}` · `GET /stocks/`
@@ -86,6 +86,10 @@ BacktestResult · `/strategies` Strategies · `/screener` Screener
   `GET /backtests/optimize/{id}` (goal-based param search, `services/optimizer.py`; in-memory,
   lost on server restart) · `GET /backtests/optimize/goals`
 - `GET /screening/pool` · `POST /screening/market-cap` · `POST /screening/full`
+- `GET /signals/` (watchlist status + detected signals + last run) · `POST /signals/watches` ·
+  `DELETE /signals/watches/{id}` · `POST /signals/check` (fetch up to the last closed session,
+  record new signals; `services/signal_monitor.py`). `scripts/signal_monitor.py` runs the same
+  check from launchd (`scripts/com.backtestlab.signal-monitor.plist`, 07:10 and 16:40 KST).
 
 ## Key conventions & patterns
 

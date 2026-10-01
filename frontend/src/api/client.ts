@@ -1,5 +1,9 @@
 import axios from "axios";
 import type {
+  SignalsOverview,
+  SignalRun,
+  WatchCreate,
+  WatchStatus,
   TickerInfo,
   StockData,
   StockStats,
@@ -177,3 +181,10 @@ export const listCurveRanges = () => api.get<RangeInfo[]>("/reports/curve-ranges
 
 export const getSectorCurves = (universe = "kospi200", months = 60) =>
   api.get<SectorCurveResponse>("/reports/sector-curves", { params: { universe, months } });
+
+// --- Signals ---
+export const getSignals = () => api.get<SignalsOverview>("/signals/");
+export const addWatch = (req: WatchCreate) => api.post<WatchStatus>("/signals/watches", req);
+export const deleteWatch = (id: number) => api.delete(`/signals/watches/${id}`);
+/** 장이 끝난 마지막 날까지 시세를 받고 새 신호를 기록한다. 종목당 1~2초. */
+export const checkSignals = () => api.post<SignalRun>("/signals/check", null, { timeout: 300_000 });

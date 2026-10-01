@@ -10,6 +10,7 @@ import TradeLog from "../components/TradeLog";
 import StrategyParamsPanel from "../components/StrategyParamsPanel";
 import ParamCompare from "../components/ParamCompare";
 import PeriodPicker from "../components/PeriodPicker";
+import WatchButton from "../components/WatchButton";
 import { fullPeriodOf, isFullPeriod, periodError, type Period } from "../utils/period";
 import { NEGATIVE } from "../theme";
 import { currencyOf, fmtMoney } from "../utils/money";
@@ -153,9 +154,13 @@ export default function BacktestResult() {
       >
         Strategy Tear Sheet · 전략 성과 리포트
       </div>
-      <h2 style={{ color: "#e2e8f0", marginBottom: 8 }}>
-        {result.ticker} — {result.strategy_name.replace(/_/g, " ")}
-      </h2>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px 16px", marginBottom: 8 }}>
+        <h2 style={{ color: "#e2e8f0", margin: 0 }}>
+          {result.ticker} — {result.strategy_name.replace(/_/g, " ")}
+        </h2>
+        {/* key: 다른 결과로 이동하면 "감시 중" 표시를 지운다 */}
+        <WatchButton key={saved.id} result={saved} />
+      </div>
       <p style={{ color: "#64748b", marginBottom: 20, fontSize: 14 }}>
         {saved.start_date} ~ {saved.end_date}
         {(result.invest_mode || "lump_sum") === "dca" ? (

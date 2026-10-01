@@ -10,6 +10,7 @@ import Report from "./pages/Report";
 import IndustryDetail from "./pages/IndustryDetail";
 import Screener from "./pages/Screener";
 import Strategies from "./pages/Strategies";
+import Signals from "./pages/Signals";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 const navStyle: React.CSSProperties = {
@@ -57,6 +58,9 @@ function App() {
           <NavLink to="/strategies" style={({ isActive }) => (isActive ? activeStyle : navStyle)}>
             Strategy
           </NavLink>
+          <NavLink to="/signals" style={({ isActive }) => (isActive ? activeStyle : navStyle)}>
+            Signals
+          </NavLink>
           <NavLink to="/screener" style={({ isActive }) => (isActive ? activeStyle : navStyle)}>
             Screener
           </NavLink>
@@ -79,6 +83,7 @@ function App() {
               <Route path="/backtest" element={<BacktestRun />} />
               <Route path="/results/:id" element={<BacktestResult />} />
               <Route path="/strategies" element={<Strategies />} />
+              <Route path="/signals" element={<Signals />} />
               <Route path="/screener" element={<Screener />} />
               <Route path="/industry" element={<Industry />} />
               <Route path="/industry/:key" element={<IndustryDetail />} />

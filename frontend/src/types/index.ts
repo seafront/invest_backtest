@@ -751,3 +751,72 @@ export interface FullScreenResponse {
   all_results: StrategyScreenResult[];
   top_picks: StrategyScreenResult[];
 }
+
+// --- Signals (워치리스트 신호 확인) ---
+
+export interface WatchCreate {
+  ticker: string;
+  strategy_name: string;
+  params: Record<string, number>;
+  backtest_id?: number | null;
+}
+
+export interface SignalPoint {
+  date: string;
+  action: "BUY" | "SELL";
+  price: number;
+}
+
+export interface WatchStatus {
+  id: number;
+  ticker: string;
+  name: string | null;
+  strategy_name: string;
+  display_name: string;
+  params: Record<string, number>;
+  backtest_id: number | null;
+  created_at: string;
+  /** 장이 끝난 마지막 평일. last_bar_date 가 이보다 앞이면 시세가 밀려 있다(휴장일일 수도 있다). */
+  expected_bar_date: string;
+  last_bar_date: string | null;
+  last_close: number | null;
+  position: "long" | "flat" | null;
+  /** 마지막 매매 신호(보유 상태를 바꾼 것). */
+  last_signal: SignalPoint | null;
+  bars_since: number | null;
+  since_return: number | null;
+  /** 마지막 일봉에서 난 신호. */
+  is_new: boolean;
+  error: string | null;
+}
+
+export interface SignalEvent {
+  id: number;
+  watch_id: number;
+  ticker: string;
+  strategy_name: string;
+  display_name: string;
+  params: Record<string, number>;
+  date: string;
+  action: "BUY" | "SELL";
+  price: number;
+  /** 감지할 때 캐시의 마지막 일봉. date 보다 뒤면 그만큼 늦게 본 것이다. */
+  seen_bar_date: string;
+  detected_at: string;
+}
+
+export interface SignalRun {
+  id: number;
+  source: "manual" | "schedule";
+  started_at: string;
+  finished_at: string | null;
+  tickers: number;
+  new_events: number;
+  failed: { ticker: string; error: string }[];
+}
+
+export interface SignalsOverview {
+  watches: WatchStatus[];
+  events: SignalEvent[];
+  last_run: SignalRun | null;
+}

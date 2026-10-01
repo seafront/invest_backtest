@@ -247,3 +247,55 @@ class Trade(Base):
     pnl = Column(Float, default=0.0)
 
     backtest = relationship("Backtest", back_populates="trades")
+
+
+class Watch(Base):
+    """신호를 매일 확인할 (종목, 전략, 파라미터) 조합. Signals 페이지의 워치리스트."""
+    __tablename__ = "watches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True, nullable=False)
+    strategy_name = Column(String, nullable=False)
+    params = Column(JSON, nullable=False)
+    # Tear Sheet 에서 추가했으면 그 결과. 돌아가 볼 수 있게 남긴다(결과가 지워져도 감시는 남는다).
+    backtest_id = Column(Integer, nullable=True)
+    # 이 날짜 뒤의 신호만 기록에 남긴다. 추가하기 전의 과거 신호는 "감지한 신호"가 아니다.
+    baseline_date = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    events = relationship("SignalEvent", back_populates="watch", cascade="all, delete-orphan")
+
+
+class SignalEvent(Base):
+    """감지한 매매 신호. 감지한 그때의 값 그대로 남긴다.
+
+    야후는 배당·분할이 생기면 과거 가격을 고친다. 다시 계산하면 어제의 신호가 사라지거나
+    날짜가 옮겨 갈 수 있어, 실제로 무엇을 봤는지는 이 기록만 말해 준다.
+    """
+    __tablename__ = "signal_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    watch_id = Column(Integer, ForeignKey("watches.id"), index=True, nullable=False)
+    date = Column(Date, nullable=False)  # 신호가 난 일봉(그날 종가 기준)
+    action = Column(String, nullable=False)  # BUY / SELL
+    price = Column(Float, nullable=False)  # 그날 종가
+    # 감지할 때 캐시의 마지막 일봉. date 와 같으면 당일 감지, 뒤면 그만큼 늦게 본 것이다.
+    seen_bar_date = Column(Date, nullable=False)
+    detected_at = Column(DateTime, default=datetime.utcnow)
+
+    watch = relationship("Watch", back_populates="events")
+
+    __table_args__ = (UniqueConstraint("watch_id", "date", "action", name="uq_watch_signal"),)
+
+
+class SignalRun(Base):
+    """신호 확인을 한 번 돌린 기록. 언제 마지막으로 확인했는지와 실패한 종목을 보여 준다."""
+    __tablename__ = "signal_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source = Column(String, nullable=False)  # manual / schedule
+    started_at = Column(DateTime, default=datetime.utcnow)
+    finished_at = Column(DateTime, nullable=True)
+    tickers = Column(Integer, default=0)
+    new_events = Column(Integer, default=0)
+    failed = Column(JSON, default=list)  # [{ticker, error}]

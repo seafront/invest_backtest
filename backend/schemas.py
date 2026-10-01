@@ -768,3 +768,71 @@ class BacktestResult(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- Signals (워치리스트 신호 확인) ---
+
+class WatchCreate(BaseModel):
+    ticker: str
+    strategy_name: str
+    params: dict = {}
+    backtest_id: int | None = None
+
+
+class SignalPoint(BaseModel):
+    date: date
+    action: str  # BUY / SELL
+    price: float
+
+
+class WatchStatus(BaseModel):
+    id: int
+    ticker: str
+    name: str | None
+    strategy_name: str
+    display_name: str
+    params: dict
+    backtest_id: int | None
+    created_at: datetime
+    expected_bar_date: date  # 장이 끝난 마지막 평일. last_bar_date 가 이보다 앞이면 시세가 밀려 있다
+    last_bar_date: date | None
+    last_close: float | None
+    position: str | None  # long / flat
+    last_signal: SignalPoint | None  # 마지막 매매 신호(보유 상태를 바꾼 것)
+    bars_since: int | None  # 그 뒤 지난 거래일 수
+    since_return: float | None  # 그 뒤 종가 변화(%)
+    is_new: bool  # 마지막 일봉에서 난 신호
+    error: str | None
+
+
+class SignalEventOut(BaseModel):
+    id: int
+    watch_id: int
+    ticker: str
+    strategy_name: str
+    display_name: str
+    params: dict
+    date: date
+    action: str
+    price: float
+    seen_bar_date: date
+    detected_at: datetime
+
+
+class SignalRunOut(BaseModel):
+    id: int
+    source: str
+    started_at: datetime
+    finished_at: datetime | None
+    tickers: int
+    new_events: int
+    failed: list[dict]
+
+    class Config:
+        from_attributes = True
+
+
+class SignalsOverview(BaseModel):
+    watches: list[WatchStatus]
+    events: list[SignalEventOut]  # 최근 감지한 신호, 새것부터
+    last_run: SignalRunOut | None
