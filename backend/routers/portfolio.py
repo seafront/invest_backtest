@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import AccountSnapshot, Holding
-from schemas import HoldingCreate, HoldingRulesUpdate, HoldingStatus, PortfolioOverview, PortfolioSyncResult
-from services import kis_client, portfolio
+from schemas import (AllocationOut, GuideRow, HoldingCreate, HoldingRulesUpdate, HoldingStatus, PortfolioOverview,
+                     PortfolioSyncResult, RiskOut, TargetItem)
+from services import kis_client, portfolio, portfolio_view
 from services.strategies import get_strategy
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
@@ -92,3 +93,31 @@ def delete_holding(holding_id: int, db: Session = Depends(get_db)):
     db.delete(h)
     db.commit()
     return {"deleted": holding_id}
+
+
+@router.get("/allocation", response_model=AllocationOut)
+def allocation(band: float = 5.0, db: Session = Depends(get_db)):
+    """자산 현황·비중과 목표 대비 리밸런싱. band: 목표에서 이만큼(%p) 벗어나야 수량을 제안한다."""
+    return portfolio_view.allocation(db, band)
+
+
+@router.put("/targets", response_model=AllocationOut)
+def save_targets(items: list[TargetItem], band: float = 5.0, db: Session = Depends(get_db)):
+    """목표 비중을 통째로 바꾼다. 적지 않은 나머지가 현금 목표다."""
+    try:
+        portfolio_view.save_targets(db, [i.model_dump() for i in items])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return portfolio_view.allocation(db, band)
+
+
+@router.get("/risk", response_model=RiskOut)
+def risk(db: Session = Depends(get_db)):
+    """지금 비중을 지난 1년 들고 있었다면의 변동성·낙폭, 종목 간 상관관계."""
+    return portfolio_view.risk(db)
+
+
+@router.get("/guide", response_model=list[GuideRow])
+def guide(db: Session = Depends(get_db)):
+    """보유·목표 종목마다 전략 상태와, 내일 어느 종가면 다음 신호가 나는지. 종목당 1~3초."""
+    return portfolio_view.guide(db)

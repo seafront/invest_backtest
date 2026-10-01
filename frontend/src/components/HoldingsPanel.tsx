@@ -46,7 +46,12 @@ const btn = (primary: boolean, disabled = false): React.CSSProperties => ({
  * 보유 종목 관리. KIS 잔고를 읽어 오고(조회만 — 주문하지 않는다) 종목마다 청산 규칙을 일봉 종가로
  * 확인한다. 걸린 규칙이 있으면 맨 위에 띄운다.
  */
-export default function HoldingsPanel() {
+interface Props {
+  /** 동기화·추가·규칙 저장 뒤에 부른다. 비중·가이드·위험 패널을 다시 계산하게 한다. */
+  onChanged?: () => void;
+}
+
+export default function HoldingsPanel({ onChanged }: Props) {
   const [data, setData] = useState<PortfolioOverview | null>(null);
   const [error, setError] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -65,6 +70,12 @@ export default function HoldingsPanel() {
     []
   );
 
+  // 보유 종목이 바뀐 뒤: 이 표를 다시 읽고 다른 패널에도 알린다.
+  const reload = async () => {
+    await load();
+    onChanged?.();
+  };
+
   useEffect(() => {
     load();
     listStrategies()
@@ -82,7 +93,7 @@ export default function HoldingsPanel() {
         `국내 ${r.data.domestic}종목 · 해외 ${r.data.overseas}종목 · 체결 ${r.data.executions}건` +
           (r.data.errors.length ? ` · 일부 실패: ${r.data.errors.join(" / ")}` : "")
       );
-      await load();
+      await reload();
     } catch (err: unknown) {
       setError(errMessage(err));
     } finally {
@@ -162,15 +173,15 @@ export default function HoldingsPanel() {
           }}
         >
           {[
-            { label: "예수금", value: fmtMoney(snap.cash_krw, "KRW") },
+            { label: "KIS 예수금", value: fmtMoney(snap.cash_krw, "KRW") },
             {
-              label: "국내 평가",
+              label: "KIS 국내 평가",
               value: fmtMoney(snap.stock_krw, "KRW"),
               sub: snap.pnl_krw ? pct0(snap.pnl_krw, snap.stock_krw) : "",
             },
-            { label: "국내 총평가", value: fmtMoney(snap.total_krw, "KRW") },
+            { label: "KIS 국내 총평가", value: fmtMoney(snap.total_krw, "KRW") },
             {
-              label: "해외 평가",
+              label: "KIS 해외 평가",
               value: fmtMoney(snap.stock_usd, "USD", 2),
               sub: snap.pnl_usd ? pct0(snap.pnl_usd, snap.stock_usd) : "",
             },
@@ -200,7 +211,7 @@ export default function HoldingsPanel() {
             </div>
           ))}
           <div style={{ color: DIM, fontSize: 11, alignSelf: "flex-end" }}>
-            {snap.date} 기준 · 기록 {data!.snapshots.length}일
+            KIS 계좌만 · {snap.date} 기준 · 기록 {data!.snapshots.length}일 (직접 입력분 포함 총자산은 위 자산 현황)
           </div>
         </div>
       )}
@@ -289,11 +300,11 @@ export default function HoldingsPanel() {
                           strategies={strategies}
                           onSaved={async () => {
                             setEditing(null);
-                            await load();
+                            await reload();
                           }}
                           onDeleted={async () => {
                             setEditing(null);
-                            await load();
+                            await reload();
                           }}
                         />
                       </td>
@@ -311,7 +322,7 @@ export default function HoldingsPanel() {
         </p>
       )}
 
-      <ManualAdd onAdded={load} />
+      <ManualAdd onAdded={reload} />
     </div>
   );
 }

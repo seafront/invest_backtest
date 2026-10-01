@@ -7,7 +7,8 @@ BacktestLab 화면에 나오는 숫자와 표시가 무엇을 뜻하는지 정�
 | [backtest-auto.md](backtest-auto.md) | Run Backtest — Auto 모드 (전략 비교) | `/backtest?mode=auto` |
 | [backtest-result.md](backtest-result.md) | 백테스트 결과 (상세 보기) | `/results/:id` |
 | [screener.md](screener.md) | Screener (조건 검색) | `/screener` |
-| [signals.md](signals.md) | Signals (보유 종목 · 매매 신호 모니터링) | `/signals` |
+| [portfolio.md](portfolio.md) | Portfolio (자산 현황·리밸런싱·보유 종목·시점 가이드·위험) | `/portfolio` |
+| [signals.md](signals.md) | Signals (매매 신호 모니터링) | `/signals` |
 
 ## 모든 화면에 공통인 가정
 

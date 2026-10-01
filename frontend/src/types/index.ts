@@ -914,3 +914,90 @@ export interface PortfolioSyncResult {
   executions: number;
   errors: string[];
 }
+
+// --- Portfolio 전체 관점 ---
+
+export interface AllocationRow {
+  ticker: string;
+  name: string | null;
+  /** 0 이면 목표에만 있는 종목. */
+  quantity: number;
+  country: "KR" | "US";
+  currency: "KRW" | "USD";
+  sector: string;
+  price: number;
+  price_date: string;
+  value_krw: number;
+  /** 현금 포함 총자산 대비 %. */
+  weight: number;
+  target: number | null;
+  /** 지금 − 목표 (%p). */
+  drift: number | null;
+  action: { side: "BUY" | "SELL"; shares: number; amount_krw: number } | null;
+}
+
+export interface AllocationGroup {
+  name: string;
+  value_krw: number;
+  weight: number;
+}
+
+export interface Allocation {
+  fx_rate: number | null;
+  fx_date: string | null;
+  total_krw: number;
+  invested_krw: number;
+  cash_krw: number;
+  cash_weight: number;
+  cash_target: number | null;
+  cash_drift: number | null;
+  band: number;
+  holdings: AllocationRow[];
+  by_sector: AllocationGroup[];
+  by_country: AllocationGroup[];
+  by_currency: AllocationGroup[];
+  warnings: string[];
+}
+
+export interface PortfolioRisk {
+  available: boolean;
+  reason: string | null;
+  start?: string | null;
+  end?: string | null;
+  days?: number | null;
+  volatility?: number | null;
+  max_drawdown?: number | null;
+  effective_n?: number | null;
+  holdings_n?: number | null;
+  holdings: { ticker: string; weight: number; volatility: number; risk_contribution: number }[];
+  tickers: string[];
+  correlation: number[][];
+  warnings: string[];
+}
+
+export interface TriggerRange {
+  low: number;
+  high: number;
+  low_pct: number;
+  high_pct: number;
+  open_low: boolean;
+  open_high: boolean;
+}
+
+export interface GuideRow {
+  ticker: string;
+  held: boolean;
+  strategy_name: string | null;
+  display_name: string | null;
+  params: Record<string, number> | null;
+  source: string | null;
+  position: "long" | "flat" | null;
+  last_signal: SignalPoint | null;
+  last_close: number | null;
+  last_bar_date: string | null;
+  next_action: "BUY" | "SELL" | null;
+  /** 내일 종가가 이 구간이면 next_action 신호. */
+  ranges: TriggerRange[];
+  mismatch: string | null;
+  error: string | null;
+}

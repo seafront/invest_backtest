@@ -74,7 +74,7 @@ frontend/src/
 
 ### Routes (frontend)
 `/` Dashboard · `/data` DataManager · `/backtest` BacktestRun · `/results/:id`
-BacktestResult · `/strategies` Strategies · `/screener` Screener · `/signals` Signals
+BacktestResult · `/strategies` Strategies · `/screener` Screener · `/signals` Signals · `/portfolio` Portfolio
 
 ### API (base `http://localhost:8000/api`)
 - `POST /stocks/fetch` · `GET /stocks/{ticker}` · `GET /stocks/`
@@ -93,7 +93,9 @@ BacktestResult · `/strategies` Strategies · `/screener` Screener · `/signals`
   and also syncs KIS holdings.
 - `GET /portfolio/` (holdings + exit-rule status + account snapshots) · `POST /portfolio/sync` (KIS balance
   and executions, read-only) · `POST/PUT/DELETE /portfolio/holdings[/{id}]` (`services/portfolio.py`).
-  Shown at the top of `/signals`.
+  `GET /portfolio/allocation?band=` (weights in KRW via `KRW=X`, rebalance shares) · `PUT /portfolio/targets` ·
+  `GET /portfolio/risk` (weekly vol/correlation, 1y MDD) · `GET /portfolio/guide` (next-signal trigger prices,
+  `services/portfolio_view.py`; 1–3 s per ticker). All shown on `/portfolio`.
 
 ## Key conventions & patterns
 

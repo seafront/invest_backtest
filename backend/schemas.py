@@ -944,3 +944,104 @@ class PortfolioSyncResult(BaseModel):
     overseas: int
     executions: int
     errors: list[str]
+
+
+# --- Portfolio 전체 관점 (자산 현황·리밸런싱·위험·시점 가이드) ---
+
+class RebalanceAction(BaseModel):
+    side: str  # BUY / SELL
+    shares: int
+    amount_krw: float
+
+
+class AllocationRow(BaseModel):
+    ticker: str
+    name: str | None
+    quantity: float  # 0 이면 목표에만 있는 종목
+    country: str  # KR / US
+    currency: str
+    sector: str
+    price: float
+    price_date: date
+    value_krw: float
+    weight: float  # 현금 포함 총자산 대비 %
+    target: float | None
+    drift: float | None  # 지금 − 목표 (%p)
+    action: RebalanceAction | None  # 허용 범위를 넘었을 때 목표로 돌아가는 수량
+
+
+class AllocationGroup(BaseModel):
+    name: str
+    value_krw: float
+    weight: float
+
+
+class AllocationOut(BaseModel):
+    fx_rate: float | None  # 1달러당 원
+    fx_date: date | None
+    total_krw: float
+    invested_krw: float
+    cash_krw: float
+    cash_weight: float
+    cash_target: float | None  # 목표 비중을 적었으면 100 − 합계
+    cash_drift: float | None
+    band: float
+    holdings: list[AllocationRow]
+    by_sector: list[AllocationGroup]
+    by_country: list[AllocationGroup]
+    by_currency: list[AllocationGroup]
+    warnings: list[str]
+
+
+class TargetItem(BaseModel):
+    ticker: str
+    weight: float = Field(..., ge=0, le=100)
+
+
+class RiskHolding(BaseModel):
+    ticker: str
+    weight: float  # 주식 안에서의 비중 %
+    volatility: float  # 연환산 %
+    risk_contribution: float  # 포트폴리오 변동의 몇 %를 이 종목이 만드는지
+
+
+class RiskOut(BaseModel):
+    available: bool
+    reason: str | None
+    start: date | None = None
+    end: date | None = None
+    days: int | None = None
+    volatility: float | None = None
+    max_drawdown: float | None = None
+    effective_n: float | None = None  # 1 / Σw² — 비중이 고르면 종목 수와 같다
+    holdings_n: int | None = None
+    holdings: list[RiskHolding] = []
+    tickers: list[str] = []
+    correlation: list[list[float]] = []
+    warnings: list[str] = []
+
+
+class TriggerRange(BaseModel):
+    low: float
+    high: float
+    low_pct: float
+    high_pct: float
+    open_low: bool  # 살펴본 범위(-20%)의 끝까지 이어짐
+    open_high: bool
+
+
+class GuideRow(BaseModel):
+    ticker: str
+    held: bool
+    strategy_name: str | None
+    display_name: str | None
+    params: dict | None
+    source: str | None  # 보유 종목 설정 / 워치리스트
+    position: str | None  # 전략 상태 long / flat
+    last_signal: SignalPoint | None
+    last_close: float | None
+    last_bar_date: date | None
+    next_action: str | None  # 다음에 기다리는 신호
+    ranges: list[TriggerRange]  # 내일 종가가 이 구간이면 next_action 신호
+    mismatch: str | None
+    error: str | None

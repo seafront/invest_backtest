@@ -1,5 +1,8 @@
 import axios from "axios";
 import type {
+  Allocation,
+  GuideRow,
+  PortfolioRisk,
   HoldingRulesUpdate,
   HoldingStatus,
   PortfolioOverview,
@@ -202,3 +205,9 @@ export const addHolding = (req: { ticker: string; quantity: number; avg_price: n
 export const updateHolding = (id: number, req: HoldingRulesUpdate) =>
   api.put<HoldingStatus>(`/portfolio/holdings/${id}`, req);
 export const deleteHolding = (id: number) => api.delete(`/portfolio/holdings/${id}`);
+export const getAllocation = (band: number) => api.get<Allocation>("/portfolio/allocation", { params: { band } });
+export const saveTargets = (items: { ticker: string; weight: number }[], band: number) =>
+  api.put<Allocation>("/portfolio/targets", items, { params: { band }, timeout: 120_000 });
+export const getPortfolioRisk = () => api.get<PortfolioRisk>("/portfolio/risk");
+/** 종목당 1~3초 — 가상의 다음 봉으로 전략을 수십 번 돌린다. */
+export const getPortfolioGuide = () => api.get<GuideRow[]>("/portfolio/guide", { timeout: 300_000 });

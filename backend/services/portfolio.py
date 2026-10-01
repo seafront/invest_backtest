@@ -257,8 +257,18 @@ def sync_kis(db: Session) -> dict:
 
 
 def refresh_prices(db: Session) -> list[str]:
-    """보유 종목의 일봉을 장이 끝난 날까지 받는다."""
+    """보유 종목·목표 비중 종목의 일봉과 USD/KRW 환율을 장이 끝난 날까지 받는다."""
+    from models import TargetWeight
+    from services.portfolio_view import FX_TICKER
+
     errors = []
+    held = {h.ticker for h in db.query(Holding).filter(Holding.active.is_(True)).all()}
+    for t in [FX_TICKER] + [x.ticker for x in db.query(TargetWeight).all() if x.ticker not in held]:
+        try:
+            signal_monitor.refresh_prices(db, t, 0)
+        except Exception as e:  # noqa: BLE001
+            db.rollback()
+            errors.append(f"{t} 시세: {str(e)[:120]}")
     for h in db.query(Holding).filter(Holding.active.is_(True)).all():
         warm = warmup_days(h.strategy_name, signal_monitor._params(get_strategy(h.strategy_name), h.params or {})) \
             if h.strategy_name else 0

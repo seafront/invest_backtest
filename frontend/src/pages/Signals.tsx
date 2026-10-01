@@ -6,7 +6,6 @@ import { errMessage } from "../utils/error";
 import { CAUTION, NEGATIVE, POSITIVE } from "../theme";
 import { currencyOf, fmtMoney } from "../utils/money";
 import { fmtParam, paramLabel } from "../utils/params";
-import HoldingsPanel from "../components/HoldingsPanel";
 
 const MUTED = "#94a3b8";
 const DIM = "#64748b";
@@ -113,7 +112,7 @@ export default function Signals() {
       <div style={{ color: DIM, fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
         Signals · 매매 신호 모니터링
       </div>
-      <h2 style={{ color: INK, margin: "0 0 6px" }}>보유 종목 · 워치리스트 신호</h2>
+      <h2 style={{ color: INK, margin: "0 0 6px" }}>워치리스트 신호</h2>
       <p style={{ color: DIM, fontSize: 13, margin: "0 0 16px", lineHeight: 1.6 }}>
         감시할 종목·전략·파라미터 조합을 백테스트와 같은 코드로 매일 판정합니다. 일봉 종가 기준이라 신호가 난 날 종가로
         계산되며, 실제로는 다음 거래일 시가 근처에서 체결하게 됩니다. 장이 끝난 날의 봉까지만 받으므로 장중에 확인해도
@@ -177,8 +176,6 @@ export default function Signals() {
           </div>
         </div>
       )}
-
-      <HoldingsPanel />
 
       <div style={PANEL}>
         <h3 style={{ color: INK, margin: "0 0 4px", fontSize: 16 }}>워치리스트</h3>

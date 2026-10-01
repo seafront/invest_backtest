@@ -364,3 +364,13 @@ class AccountSnapshot(Base):
     taken_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("date", "env", name="uq_snapshot_date_env"),)
+
+
+class TargetWeight(Base):
+    """포트폴리오 목표 비중(%). 적지 않은 나머지는 현금 목표다."""
+    __tablename__ = "target_weights"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, unique=True, index=True, nullable=False)
+    weight = Column(Float, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
