@@ -1,5 +1,9 @@
 import axios from "axios";
 import type {
+  HoldingRulesUpdate,
+  HoldingStatus,
+  PortfolioOverview,
+  PortfolioSyncResult,
   SignalsOverview,
   SignalRun,
   WatchCreate,
@@ -188,3 +192,13 @@ export const addWatch = (req: WatchCreate) => api.post<WatchStatus>("/signals/wa
 export const deleteWatch = (id: number) => api.delete(`/signals/watches/${id}`);
 /** 장이 끝난 마지막 날까지 시세를 받고 새 신호를 기록한다. 종목당 1~2초. */
 export const checkSignals = () => api.post<SignalRun>("/signals/check", null, { timeout: 300_000 });
+
+// --- Portfolio ---
+export const getPortfolio = () => api.get<PortfolioOverview>("/portfolio/");
+/** KIS 잔고·체결 조회(주문 없음) + 보유 종목 시세. 모의 서버는 느려 몇십 초 걸릴 수 있다. */
+export const syncPortfolio = () => api.post<PortfolioSyncResult>("/portfolio/sync", null, { timeout: 300_000 });
+export const addHolding = (req: { ticker: string; quantity: number; avg_price: number; first_buy_date: string | null }) =>
+  api.post<HoldingStatus>("/portfolio/holdings", req, { timeout: 120_000 });
+export const updateHolding = (id: number, req: HoldingRulesUpdate) =>
+  api.put<HoldingStatus>(`/portfolio/holdings/${id}`, req);
+export const deleteHolding = (id: number) => api.delete(`/portfolio/holdings/${id}`);

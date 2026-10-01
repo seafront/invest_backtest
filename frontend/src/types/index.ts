@@ -820,3 +820,97 @@ export interface SignalsOverview {
   events: SignalEvent[];
   last_run: SignalRun | null;
 }
+
+// --- Portfolio (보유 종목 관리) ---
+
+export interface HoldingRule {
+  kind: "strategy" | "stop" | "target" | "trailing";
+  label: string;
+  /** 그 가격에 닿으면 걸린다. 전략 청산은 없다. */
+  line: number | null;
+  triggered: boolean;
+  /** 손절·트레일링: 선까지 남은 하락 여유(%), 목표: 남은 상승(%). */
+  distance_pct: number | null;
+  note: string;
+  signal_date?: string | null;
+  is_new?: boolean;
+}
+
+export interface EntryComparison {
+  /** 실제로 산 날 전략도 보유 중이었는지. */
+  strategy_holding: boolean;
+  strategy_date: string | null;
+  strategy_price: number | null;
+  actual_date: string;
+  actual_price: number;
+  price_diff_pct: number | null;
+  days_late: number | null;
+}
+
+export interface HoldingStatus {
+  id: number;
+  source: "kis" | "manual";
+  ticker: string;
+  name: string | null;
+  quantity: number;
+  avg_price: number;
+  exchange: string | null;
+  active: boolean;
+  first_buy_date: string | null;
+  first_buy_price: number | null;
+  strategy_name: string | null;
+  display_name: string | null;
+  params: Record<string, number> | null;
+  backtest_id: number | null;
+  stop_loss_pct: number | null;
+  target_pct: number | null;
+  trailing_pct: number | null;
+  last_bar_date: string | null;
+  last_close: number | null;
+  market_value: number | null;
+  pnl: number | null;
+  pnl_pct: number | null;
+  peak_close: number | null;
+  rules: HoldingRule[];
+  triggered: boolean;
+  comparison: EntryComparison | null;
+  error: string | null;
+}
+
+export interface HoldingRulesUpdate {
+  strategy_name: string | null;
+  params: Record<string, number> | null;
+  backtest_id: number | null;
+  stop_loss_pct: number | null;
+  target_pct: number | null;
+  trailing_pct: number | null;
+  first_buy_date: string | null;
+  quantity?: number | null;
+  avg_price?: number | null;
+}
+
+export interface AccountSnapshot {
+  date: string;
+  env: "paper" | "real";
+  cash_krw: number;
+  stock_krw: number;
+  total_krw: number;
+  pnl_krw: number;
+  stock_usd: number;
+  pnl_usd: number;
+  taken_at: string;
+}
+
+export interface PortfolioOverview {
+  kis: { env: "paper" | "real"; configured: boolean; account_hint: string; last_sync: string | null };
+  holdings: HoldingStatus[];
+  /** 최근 것부터. */
+  snapshots: AccountSnapshot[];
+}
+
+export interface PortfolioSyncResult {
+  domestic: number;
+  overseas: number;
+  executions: number;
+  errors: string[];
+}

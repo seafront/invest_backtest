@@ -836,3 +836,111 @@ class SignalsOverview(BaseModel):
     watches: list[WatchStatus]
     events: list[SignalEventOut]  # 최근 감지한 신호, 새것부터
     last_run: SignalRunOut | None
+
+
+# --- Portfolio (보유 종목 관리) ---
+
+class HoldingCreate(BaseModel):
+    ticker: str
+    quantity: float = Field(..., gt=0)
+    avg_price: float = Field(..., gt=0)
+    first_buy_date: date | None = None
+
+
+class HoldingRulesUpdate(BaseModel):
+    """청산 규칙. null 이면 그 규칙을 끈다. 직접 입력한 종목은 수량·단가·첫 매수일도 고칠 수 있다."""
+    strategy_name: str | None = None
+    params: dict | None = None
+    backtest_id: int | None = None
+    stop_loss_pct: float | None = Field(None, gt=0, lt=100)
+    target_pct: float | None = Field(None, gt=0, le=1000)
+    trailing_pct: float | None = Field(None, gt=0, lt=100)
+    first_buy_date: date | None = None
+    quantity: float | None = Field(None, gt=0)
+    avg_price: float | None = Field(None, gt=0)
+
+
+class HoldingRule(BaseModel):
+    kind: str  # strategy / stop / target / trailing
+    label: str
+    line: float | None  # 그 가격에 닿으면 걸린다
+    triggered: bool
+    distance_pct: float | None  # 손절·트레일링: 선까지 남은 하락 여유, 목표: 남은 상승
+    note: str
+    signal_date: date | None = None
+    is_new: bool = False
+
+
+class EntryComparison(BaseModel):
+    strategy_holding: bool  # 실제로 산 날 전략도 보유 중이었는지
+    strategy_date: date | None
+    strategy_price: float | None
+    actual_date: date
+    actual_price: float
+    price_diff_pct: float | None  # 실제 단가가 전략 진입가보다 몇 % 비쌌나
+    days_late: int | None  # 전략 진입 뒤 몇 거래일(평일) 늦게 샀나
+
+
+class HoldingStatus(BaseModel):
+    id: int
+    source: str
+    ticker: str
+    name: str | None
+    quantity: float
+    avg_price: float
+    exchange: str | None
+    active: bool
+    first_buy_date: date | None
+    first_buy_price: float | None
+    strategy_name: str | None
+    display_name: str | None
+    params: dict | None
+    backtest_id: int | None
+    stop_loss_pct: float | None
+    target_pct: float | None
+    trailing_pct: float | None
+    last_bar_date: date | None
+    last_close: float | None
+    market_value: float | None
+    pnl: float | None
+    pnl_pct: float | None
+    peak_close: float | None
+    rules: list[HoldingRule]
+    triggered: bool
+    comparison: EntryComparison | None
+    error: str | None
+
+
+class AccountSnapshotOut(BaseModel):
+    date: date
+    env: str
+    cash_krw: float
+    stock_krw: float
+    total_krw: float
+    pnl_krw: float
+    stock_usd: float
+    pnl_usd: float
+    taken_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class KisAccountInfo(BaseModel):
+    env: str  # paper / real
+    configured: bool  # 앱키와 계좌번호가 모두 있는지
+    account_hint: str  # ****12-01
+    last_sync: datetime | None
+
+
+class PortfolioOverview(BaseModel):
+    kis: KisAccountInfo
+    holdings: list[HoldingStatus]
+    snapshots: list[AccountSnapshotOut]  # 최근 것부터
+
+
+class PortfolioSyncResult(BaseModel):
+    domestic: int
+    overseas: int
+    executions: int
+    errors: list[str]

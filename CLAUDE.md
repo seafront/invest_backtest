@@ -89,7 +89,11 @@ BacktestResult · `/strategies` Strategies · `/screener` Screener · `/signals`
 - `GET /signals/` (watchlist status + detected signals + last run) · `POST /signals/watches` ·
   `DELETE /signals/watches/{id}` · `POST /signals/check` (fetch up to the last closed session,
   record new signals; `services/signal_monitor.py`). `scripts/signal_monitor.py` runs the same
-  check from launchd (`scripts/com.backtestlab.signal-monitor.plist`, 07:10 and 16:40 KST).
+  check from launchd (`scripts/com.backtestlab.signal-monitor.plist`, 07:10 and 16:40 KST)
+  and also syncs KIS holdings.
+- `GET /portfolio/` (holdings + exit-rule status + account snapshots) · `POST /portfolio/sync` (KIS balance
+  and executions, read-only) · `POST/PUT/DELETE /portfolio/holdings[/{id}]` (`services/portfolio.py`).
+  Shown at the top of `/signals`.
 
 ## Key conventions & patterns
 
@@ -129,6 +133,10 @@ BacktestResult · `/strategies` Strategies · `/screener` Screener · `/signals`
   (`types/index.ts`) must stay in sync when you change the API shape.
 
 ## Gotchas
+
+- **KIS is read-only in this app.** `kis_client.request` refuses order TRs (IDs ending in `U`); do not
+  add order calls. Paper TR IDs are the real ones with a leading `V` (`portfolio._tr`). Never log or
+  return the account number — use `kis_client.account_hint()`. `.env` and `.kis_token.json` are gitignored.
 
 - **CORS is pinned to `http://localhost:5173`** in `main.py`. Change there if the
   frontend port/origin changes.

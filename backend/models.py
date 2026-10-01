@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, JSON, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, JSON, ForeignKey, UniqueConstraint, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -299,3 +299,68 @@ class SignalRun(Base):
     tickers = Column(Integer, default=0)
     new_events = Column(Integer, default=0)
     failed = Column(JSON, default=list)  # [{ticker, error}]
+
+
+class Holding(Base):
+    """보유 종목. KIS 잔고에서 동기화하거나(source=kis) 직접 넣는다(manual).
+
+    청산 규칙(전략·손절·목표·트레일링)도 여기에 둔다. KIS 동기화는 수량·평균단가만 고치므로
+    규칙은 동기화를 거쳐도 남는다.
+    """
+    __tablename__ = "holdings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source = Column(String, nullable=False)  # kis / manual
+    ticker = Column(String, index=True, nullable=False)  # 야후 형식: 005930.KS, AAPL
+    name = Column(String, nullable=True)
+    quantity = Column(Float, nullable=False, default=0)
+    avg_price = Column(Float, nullable=False, default=0)  # 평균 매입가(종목 통화)
+    exchange = Column(String, nullable=True)  # KIS 해외 거래소 코드 (NASD/NYSE/AMEX)
+    # 지금 보유 묶음의 첫 매수일. 체결 내역(최근 3개월)에서 찾거나 직접 넣는다. 트레일링 고점과
+    # 실제 vs 백테스트 비교의 기준이다. 모르면 비어 있다.
+    first_buy_date = Column(Date, nullable=True)
+    first_buy_price = Column(Float, nullable=True)
+    active = Column(Boolean, nullable=False, default=True)  # KIS 잔고에서 빠지면 False(다 판 것)
+    # 청산 규칙. 비어 있으면 그 규칙은 쓰지 않는다.
+    strategy_name = Column(String, nullable=True)
+    params = Column(JSON, nullable=True)
+    backtest_id = Column(Integer, nullable=True)
+    stop_loss_pct = Column(Float, nullable=True)  # 평균단가 대비 -n% 이하
+    target_pct = Column(Float, nullable=True)  # 평균단가 대비 +n% 이상
+    trailing_pct = Column(Float, nullable=True)  # 첫 매수 뒤 최고 종가 대비 -n% 이하
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("source", "ticker", name="uq_holding_source_ticker"),)
+
+
+class Execution(Base):
+    """KIS 체결 내역. 실제로 언제 얼마에 샀는지 — 백테스트 신호와 비교하는 데 쓴다."""
+    __tablename__ = "executions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True, nullable=False)
+    date = Column(Date, nullable=False)
+    side = Column(String, nullable=False)  # BUY / SELL
+    quantity = Column(Float, nullable=False)
+    price = Column(Float, nullable=False)
+    order_no = Column(String, nullable=False)
+
+    __table_args__ = (UniqueConstraint("order_no", "date", "ticker", name="uq_execution_order"),)
+
+
+class AccountSnapshot(Base):
+    """하루 한 번 남기는 계좌 평가. 실제 계좌의 자산 곡선이 된다. 통화별로 따로 적는다."""
+    __tablename__ = "account_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(Date, nullable=False)
+    env = Column(String, nullable=False)  # paper / real
+    cash_krw = Column(Float, default=0)  # 예수금
+    stock_krw = Column(Float, default=0)  # 국내 주식 평가금액
+    total_krw = Column(Float, default=0)  # 국내 총평가(예수금 포함)
+    pnl_krw = Column(Float, default=0)  # 국내 평가손익
+    stock_usd = Column(Float, default=0)  # 해외 주식 평가금액(USD)
+    pnl_usd = Column(Float, default=0)  # 해외 평가손익(USD)
+    taken_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("date", "env", name="uq_snapshot_date_env"),)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""워치리스트의 신호를 확인한다. launchd 가 장 마감 뒤에 부른다.
+"""워치리스트의 신호를 확인하고 보유 종목(KIS 잔고)을 동기화한다. launchd 가 장 마감 뒤에 부른다.
 
 서버가 떠 있든 말든 돌도록 API 를 거치지 않고 DB 에 직접 쓴다. Signals 페이지의 "지금 확인"과
 같은 함수(services/signal_monitor.run_check)를 부른다.
@@ -45,6 +45,20 @@ def main() -> int:
         if run.new_events:
             for e in db.query(SignalEvent).filter(SignalEvent.detected_at >= run.started_at).all():
                 log.info("  신호: %s %s %s %s @ %s", e.date, e.watch.ticker, e.watch.strategy_name, e.action, e.price)
+        # 보유 종목: KIS 잔고·체결을 읽고(조회만) 계좌 스냅샷을 남긴다. 키가 없으면 시세만 받는다.
+        from services import kis_client, portfolio
+        if kis_client.config()["configured"] and kis_client.account_hint():
+            try:
+                r = portfolio.sync_kis(db)
+                log.info("KIS 동기화 — 국내 %d · 해외 %d · 체결 %d", r["domestic"], r["overseas"], r["executions"])
+                for err in r["errors"]:
+                    log.warning("  %s", err)
+            except Exception:  # noqa: BLE001 - 신호 확인 결과는 이미 저장됐다
+                db.rollback()
+                log.exception("KIS 동기화 실패")
+        else:
+            for err in portfolio.refresh_prices(db):
+                log.warning("  %s", err)
         return 1 if run.tickers and len(run.failed) >= run.tickers else 0
     finally:
         db.close()

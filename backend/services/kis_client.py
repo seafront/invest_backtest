@@ -35,7 +35,8 @@ RETRY_ON_THROTTLE = 3
 # 잠깐 뒤 다시 부르면 풀리는 오류. EGW00201은 유량 초과, EGW00316은 "조회 처리 중 오류 —
 # 재 조회 수행 부탁드립니다"로 KIS가 직접 재시도를 요청한다 (HTTP 500으로 온다).
 # 재시도 없이 실패로 올리면 일괄 수집이 연속 실패로 중단된다 (2026-09 수급 48/201에서 멈췄다).
-RETRYABLE = {"EGW00201", "EGW00316"}
+# EGW00300 "Gateway 라우팅 오류"도 모의 서버에서 가끔 나고 바로 다시 부르면 된다(2026-10 잔고 조회).
+RETRYABLE = {"EGW00201", "EGW00316", "EGW00300"}
 _last_call = 0.0
 
 
@@ -72,6 +73,29 @@ def config() -> dict:
         "configured": bool(key and secret),
         "key_hint": f"{key[:4]}…{key[-2:]}" if len(key) > 6 else "",
     }
+
+
+def is_paper() -> bool:
+    return _env() == "paper"
+
+
+def account() -> tuple[str, str]:
+    """(종합계좌번호 8자리, 계좌상품코드 2자리). 8자리만 적혀 있으면 상품코드는 01(종합)."""
+    env = _env()
+    name = "KIS_REAL_ACCOUNT" if env == "real" else "KIS_PAPER_ACCOUNT"
+    raw = "".join(c for c in os.getenv(name, "") if c.isdigit())
+    if len(raw) not in (8, 10):
+        raise KisError(f"{env} 계좌번호가 없습니다. backend/.env 의 {name} 에 8자리(또는 8자리-2자리)를 채우세요.")
+    return raw[:8], raw[8:] or "01"
+
+
+def account_hint() -> str:
+    """화면에 보여 줄 계좌 표시. 저장소가 공개돼 있어 번호는 끝 2자리만 남긴다."""
+    try:
+        cano, prod = account()
+    except KisError:
+        return ""
+    return f"****{cano[-2:]}-{prod}"
 
 
 def _credentials() -> tuple[str, str, str]:
@@ -134,8 +158,15 @@ def _throttle() -> None:
     _last_call = time.time()
 
 
-def request(path: str, tr_id: str, params: dict) -> dict:
-    """시세 계열 GET 호출. 주문 API는 이 클라이언트에서 다루지 않는다."""
+def request(path: str, tr_id: str, params: dict, tr_cont: str = "") -> dict:
+    """조회 GET 호출. 주문 API는 이 클라이언트에서 다루지 않는다.
+
+    KIS의 주문·정정·취소 TR은 ID가 U로 끝난다(조회는 R). 실전 키는 주문까지 열리므로
+    실수로라도 주문 TR이 나가지 않게 여기서 막는다.
+    tr_cont: 연속 조회면 "N". 응답 헤더의 tr_cont 는 body["_tr_cont"] 로 돌려준다(M/F 면 다음 쪽이 있다).
+    """
+    if tr_id.upper().endswith("U"):
+        raise KisError(f"{tr_id}: 주문 계열 TR은 이 앱에서 호출하지 않습니다")
     key, secret, host = _credentials()
     last_msg = ""
 
@@ -150,6 +181,7 @@ def request(path: str, tr_id: str, params: dict) -> dict:
                     "appsecret": secret,
                     "tr_id": tr_id,
                     "custtype": "P",  # 개인
+                    "tr_cont": tr_cont,
                 },
                 params=params,
                 timeout=20,
@@ -171,6 +203,7 @@ def request(path: str, tr_id: str, params: dict) -> dict:
         # KIS는 HTTP 200 으로도 실패를 알린다. rt_cd 가 "0" 이어야 정상이다.
         if body.get("rt_cd") not in ("0", None):
             raise KisError(f"{tr_id} 오류 [{body.get('msg_cd')}] {body.get('msg1', '')[:150]}")
+        body["_tr_cont"] = res.headers.get("tr_cont", "")
         return body
 
     reason = "유량 제한" if last_msg == "EGW00201" else f"일시 오류({last_msg})"
