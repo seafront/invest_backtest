@@ -73,22 +73,8 @@ public func runAutoBacktest(
         let r = runBacktest(bars: frame, strategy: strategy, initialCapital: initialCapital,
                             monthlyContribution: monthlyContribution, mode: mode, tradeStart: start)
         totalInvested = r.totalInvested
-        let params = Dictionary(uniqueKeysWithValues: strategy.params.map { ($0.name, $0.defaultValue) })
-        results.append((order, AutoStrategyResult(
-            strategyName: strategy.name,
-            displayName: strategy.displayName,
-            params: params,
-            paramSpecs: strategy.params,
-            totalReturn: r.totalReturn,
-            cagr: r.cagr,
-            sharpeRatio: r.sharpe,
-            maxDrawdown: r.maxDrawdown,
-            winRate: r.winRate,
-            tradesCount: r.trades.filter { $0.action == .sell }.count,
-            curve: Curves.weekly(r.equity, mode: mode, initialCapital: initialCapital,
-                                 monthlyContribution: monthlyContribution),
-            firstTrade: r.trades.first?.date
-        )))
+        results.append((order, summarize(strategy, r, mode: mode, initialCapital: initialCapital,
+                                         monthlyContribution: monthlyContribution)))
     }
     // 파이썬 sort 는 안정 정렬이다 — 총수익률이 같으면 등록 순서를 지킨다
     let sorted = results.sorted {
@@ -100,6 +86,26 @@ public func runAutoBacktest(
         ticker: ticker, startDate: start, endDate: end,
         dataStart: trading.first!.date, dataEnd: trading.last!.date,
         mode: mode, totalInvested: totalInvested, results: sorted
+    )
+}
+
+/// 엔진 결과를 비교표 한 줄로 줄인다. 일별 곡선 대신 주 단위 곡선을 싣는다 (routers/backtests.py _summarize).
+func summarize(_ strategy: any Strategy, _ r: EngineResult, mode: InvestMode,
+               initialCapital: Double, monthlyContribution: Double) -> AutoStrategyResult {
+    AutoStrategyResult(
+        strategyName: strategy.name,
+        displayName: strategy.displayName,
+        params: strategy.resolvedParams,
+        paramSpecs: strategy.params,
+        totalReturn: r.totalReturn,
+        cagr: r.cagr,
+        sharpeRatio: r.sharpe,
+        maxDrawdown: r.maxDrawdown,
+        winRate: r.winRate,
+        tradesCount: r.trades.filter { $0.action == .sell }.count,
+        curve: Curves.weekly(r.equity, mode: mode, initialCapital: initialCapital,
+                             monthlyContribution: monthlyContribution),
+        firstTrade: r.trades.first?.date
     )
 }
 

@@ -56,17 +56,20 @@ final class LeaderboardModel {
 
     var ticker: String { didSet { save() } }
     var mode: InvestMode { didSet { save() } }
-    var capital: Double { didSet { save() } }
-    var monthly: Double { didSet { save() } }
+    /// 금액은 통화별로 따로 들고 있는다. 종목을 AAPL ↔ 005930.KS 로 바꿔도 각자 입력값이 남는다.
+    var amounts: [String: [Double]] { didSet { save() } }
     var windowWeeks: Int { didSet { save() } }
     var sortKey: SortKey { didSet { save() } }
     /// 그래프에 켠 전략 → 색 번호. 색은 순위가 아니라 전략에 붙는다 — 다른 전략을 켜고 꺼도
     /// 이미 켜진 선의 색은 바뀌지 않는다.
     var plotted: [String: Int] { didSet { save() } }
+    /// 목록에 없어 직접 입력한 티커 (최근 것부터, 시세를 받는 데 성공한 것만)와 Yahoo 가 알려 준 이름
+    private(set) var customTickers: [String] { didSet { save() } }
+    private(set) var customNames: [String: String] { didSet { save() } }
 
     private(set) var result: AutoBacktestResult?
-    /// 결과를 만든 입력. 폼을 바꿔도 결과 화면은 이 조건을 보여 준다.
-    private(set) var ranCapital: Double = 0
+    /// 결과를 만든 조건. 폼을 바꿔도 Tear Sheet 는 표와 같은 조건으로 다시 돌린다.
+    private(set) var ran: (bars: [Bar], end: Day, capital: Double, monthly: Double)?
     private(set) var loading = false
     var error: String?
     /// 시세를 새로 받지 못해 저장된 시세로 계산했을 때의 안내
@@ -80,24 +83,43 @@ final class LeaderboardModel {
         let d = UserDefaults.standard
         ticker = d.string(forKey: "ticker") ?? "AAPL"
         mode = InvestMode(rawValue: d.string(forKey: "mode") ?? "") ?? .lumpSum
-        capital = d.object(forKey: "capital") as? Double ?? 100_000
-        monthly = d.object(forKey: "monthly") as? Double ?? 1_000
+        amounts = d.dictionary(forKey: "amounts") as? [String: [Double]] ?? [:]
         windowWeeks = d.object(forKey: "windowWeeks") as? Int ?? 52
         sortKey = SortKey(rawValue: d.string(forKey: "sortKey") ?? "") ?? .rollWin
         plotted = d.dictionary(forKey: "plotted") as? [String: Int] ?? [:]
+        customTickers = d.stringArray(forKey: "customTickers") ?? []
+        customNames = d.dictionary(forKey: "customNames") as? [String: String] ?? [:]
     }
 
     private func save() {
         defaults.set(ticker, forKey: "ticker")
         defaults.set(mode.rawValue, forKey: "mode")
-        defaults.set(capital, forKey: "capital")
-        defaults.set(monthly, forKey: "monthly")
+        defaults.set(amounts, forKey: "amounts")
         defaults.set(windowWeeks, forKey: "windowWeeks")
         defaults.set(sortKey.rawValue, forKey: "sortKey")
         defaults.set(plotted, forKey: "plotted")
+        defaults.set(customTickers, forKey: "customTickers")
+        defaults.set(customNames, forKey: "customNames")
     }
 
-    var listing: Listing? { Listing.nasdaq100.first { $0.ticker == ticker } }
+    var listing: Listing? { Listing.find(ticker) }
+
+    /// 목록 종목은 목록 이름, 직접 입력한 종목은 Yahoo 이름
+    func name(for t: String) -> String { Listing.find(t)?.name ?? customNames[t] ?? "" }
+
+    static let maxCustomTickers = 10
+    var currency: Currency { Currency(ticker: ticker) }
+    var resultCurrency: Currency { Currency(ticker: result?.ticker ?? ticker) }
+
+    var capital: Double {
+        get { amounts[currency.rawValue]?[0] ?? currency.defaultCapital }
+        set { amounts[currency.rawValue] = [newValue, monthly] }
+    }
+
+    var monthly: Double {
+        get { amounts[currency.rawValue]?[1] ?? currency.defaultMonthly }
+        set { amounts[currency.rawValue] = [capital, newValue] }
+    }
 
     // MARK: 실행
 
@@ -126,7 +148,11 @@ final class LeaderboardModel {
                                     mode: mode, initialCapital: capital, monthlyContribution: monthly)
             }.value
             result = res
-            ranCapital = capital
+            ran = (loaded.prices.bars, end, capital, monthly)
+            if Listing.find(ticker) == nil {
+                customTickers = Array(([ticker] + customTickers.filter { $0 != ticker }).prefix(Self.maxCustomTickers))
+                if let n = loaded.prices.name { customNames[ticker] = n }
+            }
             pricesFetchedAt = loaded.prices.fetchedAt
             notice = loaded.fallbackReason.map { "시세를 새로 받지 못해 저장된 시세로 계산했습니다 (\($0))" }
             if !keepPlotted || plotted.keys.contains(where: { name in !res.results.contains { $0.strategyName == name } }) {
@@ -135,6 +161,67 @@ final class LeaderboardModel {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    /// 표와 같은 조건으로 전략 하나를 다시 돌린다 (웹의 "상세 보기").
+    /// `period` 를 주면 그 구간만 (Tear Sheet 의 계산 구간). 없으면 표와 같은 최근 5년.
+    func report(for strategyName: String, params: [String: Double] = [:],
+                period: ClosedRange<Day>? = nil) async throws -> StrategyReport {
+        let (c, start, end) = try conditions(period)
+        let bars = try await bars(from: start.adding(days: -warmupDays(strategyName, [params])))
+        return try await Task.detached(priority: .userInitiated) {
+            try runStrategyReport(ticker: c.ticker, bars: bars, start: start, end: end, strategyName: strategyName,
+                                  params: params, mode: c.mode, initialCapital: c.capital,
+                                  monthlyContribution: c.monthly)
+        }.value
+    }
+
+    /// 파라미터 비교 — 원래 값과 변형들을 같은 구간·같은 투자 방식으로 (웹 /backtests/simulate)
+    func comparison(for strategyName: String, paramSets: [[String: Double]],
+                    period: ClosedRange<Day>?) async throws -> Comparison {
+        let (c, start, end) = try conditions(period)
+        let bars = try await bars(from: start.adding(days: -warmupDays(strategyName, paramSets)))
+        return try await Task.detached(priority: .userInitiated) {
+            try runComparison(ticker: c.ticker, bars: bars, start: start, end: end, strategyName: strategyName,
+                              paramSets: paramSets, mode: c.mode, initialCapital: c.capital,
+                              monthlyContribution: c.monthly)
+        }.value
+    }
+
+    /// 최적값 찾기. 파라미터 최댓값 조합의 준비 구간까지 시세를 더 받는다 (최대 4년쯤).
+    func optimize(_ strategyName: String, original: [String: Double], period: ClosedRange<Day>?,
+                  goal: Optimizer.Goal, minTrades: Int, maxMDD: Double?,
+                  progress: @escaping Optimizer.Progress) async throws -> Optimizer.Result {
+        let (c, start, end) = try conditions(period)
+        let bars = try await bars(from: Optimizer.requiredStart(strategyName: strategyName, start: start))
+        return try await Task.detached(priority: .userInitiated) {
+            try Optimizer.optimize(bars: bars, strategyName: strategyName, start: start, end: end, goal: goal,
+                                   mode: c.mode, initialCapital: c.capital, monthlyContribution: c.monthly,
+                                   original: original, minTrades: minTrades, maxMDD: maxMDD, progress: progress)
+        }.value
+    }
+
+    /// 표를 만든 조건과 계산 구간 (없으면 표와 같은 최근 5년)
+    private func conditions(_ period: ClosedRange<Day>?) throws
+        -> ((ticker: String, mode: InvestMode, capital: Double, monthly: Double), Day, Day) {
+        guard let ran, let result else { throw AutoBacktestError.notEnoughData(ticker) }
+        return ((result.ticker, result.mode, ran.capital, ran.monthly),
+                period?.lowerBound ?? result.startDate, period?.upperBound ?? result.endDate)
+    }
+
+    private func warmupDays(_ strategyName: String, _ paramSets: [[String: Double]]) -> Int {
+        guard let s = Strategies.all.first(where: { $0.name == strategyName }) else { return 0 }
+        return paramSets.map { s.with($0).warmupDays }.max() ?? s.warmupDays
+    }
+
+    /// `from` 부터의 시세. 표를 만들 때 받은 것보다 더 앞이 필요하면(긴 준비 구간) 더 받는다.
+    private func bars(from: Day) async throws -> [Bar] {
+        guard let ran, let result else { throw AutoBacktestError.notEnoughData(ticker) }
+        if let first = ran.bars.first, first.date <= from.adding(days: 7) { return ran.bars }
+        let loaded = try await store.load(result.ticker, from: from, to: ran.end)
+        // 표와 같은 종목·조건일 때만 바꿔 넣는다 (그사이 다른 종목을 돌렸으면 건드리지 않는다)
+        if self.result?.ticker == result.ticker { self.ran?.bars = loaded.prices.bars }
+        return loaded.prices.bars
     }
 
     /// 백엔드처럼 기기 날짜를 오늘로 쓴다 (끝 날짜 = 오늘, 시작 = 5년 전 같은 날)

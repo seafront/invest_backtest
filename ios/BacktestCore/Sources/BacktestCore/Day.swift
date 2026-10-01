@@ -64,6 +64,15 @@ public struct Day: Hashable, Comparable, Sendable, CustomStringConvertible {
         return Day(year: y - years, month: m, day: d)
     }
 
+    /// `months`개월 전. 없는 날짜는 넘어간다 — 8월 31일의 6개월 전은 3월 3일(2월 31일)
+    /// (웹 utils/date.ts monthsBefore 가 쓰는 JavaScript Date 규칙과 같다).
+    public func monthsBefore(_ months: Int) -> Day {
+        let (y, m, d) = components
+        let total = y * 12 + (m - 1) - months
+        let (ny, nm) = (Int((Double(total) / 12).rounded(.down)), ((total % 12) + 12) % 12 + 1)
+        return Day(year: ny, month: nm, day: 1).adding(days: d - 1)
+    }
+
     public var description: String {
         let (y, m, d) = components
         return String(format: "%04d-%02d-%02d", y, m, d)

@@ -48,9 +48,15 @@ struct Fixture: Decodable {
         return Bundle.module.resourceURL!.appendingPathComponent("Fixtures")
     }
 
+    static func url(_ ticker: String) -> URL { directory.appendingPathComponent("\(ticker).json") }
+
+    /// 저장소에 넣은 정답. 특정 종목을 보는 테스트는 BACKTEST_FIXTURES 와 상관없이 이것을 쓴다.
+    static func bundled(_ ticker: String) -> URL {
+        Bundle.module.resourceURL!.appendingPathComponent("Fixtures/\(ticker).json")
+    }
+
     static func load(_ ticker: String) throws -> Fixture {
-        let url = directory.appendingPathComponent("\(ticker).json")
-        return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+        try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url(ticker)))
     }
 
     static var tickers: [String] {

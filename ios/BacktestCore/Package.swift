@@ -10,7 +10,7 @@ let package = Package(
         .testTarget(
             name: "BacktestCoreTests",
             dependencies: ["BacktestCore"],
-            resources: [.copy("Fixtures"), .copy("Yahoo")]
+            resources: [.copy("Fixtures"), .copy("Yahoo"), .copy("Optimizer")]
         ),
     ]
 )

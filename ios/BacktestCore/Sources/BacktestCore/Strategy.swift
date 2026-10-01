@@ -35,31 +35,55 @@ public struct ParamSpec: Sendable {
     public let name: String
     public let defaultValue: Double
     public let isInt: Bool
+    /// 허용 범위 (백엔드가 요청을 검사하는 min–max)
+    public let range: ClosedRange<Double>
     public let description: String
 
-    public init(_ name: String, _ defaultValue: Double, int isInt: Bool = true, _ description: String) {
+    public init(_ name: String, _ defaultValue: Double, _ range: ClosedRange<Double>, int isInt: Bool = true,
+                _ description: String) {
         self.name = name
         self.defaultValue = defaultValue
         self.isInt = isInt
+        self.range = range
         self.description = description
     }
 }
 
-/// backend/services/strategies/base.py 의 Strategy. 앱은 기본 파라미터로만 돌린다.
+public struct IndicatorPoint: Hashable, Sendable {
+    public let date: Day
+    public let value: Double
+}
+
+/// 차트에 겹쳐 그리는 지표 (compute_indicators). 이동평균·밴드처럼 가격과 같은 축에 그리는 것과
+/// RSI·MACD 처럼 따로 그려야 하는 것을 나눈다 — 웹은 모두 가격 차트에 얹는다.
+public struct Indicator: Sendable, Identifiable {
+    public enum Pane: Sendable { case price, oscillator }
+    public let name: String
+    public let pane: Pane
+    public let points: [IndicatorPoint]
+    public var id: String { name }
+}
+
+/// backend/services/strategies/base.py 의 Strategy. `values` 에 없는 파라미터는 기본값을 쓴다.
 public protocol Strategy: Sendable {
     var name: String { get }
     var displayName: String { get }
     var summary: String { get }
     var params: [ParamSpec] { get }
+    /// 기본값과 다르게 돌릴 파라미터 (파라미터 비교·최적화)
+    var values: [String: Double] { get set }
     func signals(_ bars: [Bar]) -> [Signal]
+    /// 차트 지표. 값의 반올림(4자리·2자리)과 어느 행부터 싣는지까지 백엔드와 같다.
+    func indicators(_ bars: [Bar]) -> [Indicator]
     /// 시작일 전에 더 불러올 거래일 수
     var warmupBars: Int { get }
 }
 
 extension Strategy {
+    public func indicators(_ bars: [Bar]) -> [Indicator] { [] }
     /// 이름이 period 로 끝나는 파라미터 중 가장 긴 것의 2배 + 20일.
     public var warmupBars: Int {
-        let periods = params.filter { $0.name.hasSuffix("period") }.map(\.defaultValue)
+        let periods = params.filter { $0.name.hasSuffix("period") }.map { param($0.name) }
         guard let longest = periods.max() else { return 0 }
         return Int(longest * 2) + 20
     }
@@ -70,11 +94,33 @@ extension Strategy {
     }
 
     func param(_ name: String) -> Double {
-        params.first { $0.name == name }!.defaultValue
+        values[name] ?? params.first { $0.name == name }!.defaultValue
+    }
+
+    /// 쓰는 파라미터 전부 (기본값 + 바꾼 값). 백엔드 /simulate 가 돌려주는 params 와 같다.
+    public var resolvedParams: [String: Double] {
+        Dictionary(uniqueKeysWithValues: params.map { ($0.name, param($0.name)) })
+    }
+
+    /// 이 파라미터로 돌리는 같은 전략
+    public func with(_ values: [String: Double]) -> any Strategy {
+        var copy = self
+        copy.values = values
+        return copy
     }
 
     func intParam(_ name: String) -> Int { Int(param(name)) }
 }
+
+/// 지표 한 줄을 만든다. `rows` 는 값을 싣는 행(백엔드의 dropna 결과), `digits` 는 반올림 자리.
+func indicator(_ name: String, _ pane: Indicator.Pane, _ bars: [Bar], _ values: [Double],
+               rows: [Int], digits: Int) -> Indicator {
+    Indicator(name: name, pane: pane,
+              points: rows.map { IndicatorPoint(date: bars[$0].date, value: npRound(values[$0], digits)) })
+}
+
+/// 이 열이 NaN 이 아닌 행 (dropna(subset=[열]))
+func rowsWhere(_ values: [Double]) -> [Int] { values.indices.filter { !values[$0].isNaN } }
 
 /// 신호 루프에서 쓰는 보조. 파이썬 전략들의 `position` 플래그와 BUY/SELL 기록을 한데 묶었다.
 struct SignalLog {

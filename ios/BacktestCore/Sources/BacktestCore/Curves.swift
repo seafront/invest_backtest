@@ -33,16 +33,22 @@ enum Curves {
         return out
     }
 
-    /// 각 ISO 주의 마지막 거래일만 남기고 반올림한다 (API 로 내보내는 모양 그대로).
-    static func weekly(_ equity: [(date: Day, equity: Double)], mode: InvestMode,
-                       initialCapital: Double, monthlyContribution: Double) -> [CurvePoint] {
+    /// 각 ISO 주의 마지막 거래일만 남긴다 (curves.weekly). 반올림하지 않는다.
+    static func weeklyPoints(_ points: [CurvePoint]) -> [CurvePoint] {
         var out: [CurvePoint] = []
         var lastWeek: (Int, Int)?
-        for p in daily(equity, mode: mode, initialCapital: initialCapital, monthlyContribution: monthlyContribution) {
+        for p in points {
             let week = p.date.isoWeek
             if let lastWeek, lastWeek == week { out[out.count - 1] = p } else { out.append(p) }
             lastWeek = week
         }
-        return out.map { CurvePoint(date: $0.date, ret: pyRound($0.ret, 2), idx: pyRound($0.idx, 6)) }
+        return out
+    }
+
+    /// 주 단위로 줄이고 반올림한다 (API 로 내보내는 모양 그대로, curves.weekly_curve).
+    static func weekly(_ equity: [(date: Day, equity: Double)], mode: InvestMode,
+                       initialCapital: Double, monthlyContribution: Double) -> [CurvePoint] {
+        weeklyPoints(daily(equity, mode: mode, initialCapital: initialCapital, monthlyContribution: monthlyContribution))
+            .map { CurvePoint(date: $0.date, ret: pyRound($0.ret, 2), idx: pyRound($0.idx, 6)) }
     }
 }

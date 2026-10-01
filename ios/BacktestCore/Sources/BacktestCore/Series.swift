@@ -3,20 +3,130 @@ import Foundation
 /// pandas 연산을 옮긴 것. 빈 값은 pandas 처럼 NaN 으로 두어, NaN 과의 비교가 늘 거짓이 되는
 /// 성질까지 그대로 가져온다 (지표가 준비되기 전 구간에서 신호가 나지 않는 이유가 이것이다).
 ///
-/// 창 계산은 창마다 새로 더한다. pandas 는 이동하며 더하고 빼지만(보정 합), 결과 차이는
-/// 1e-15 수준이고, 창 안 값이 모두 0이면 둘 다 정확히 0을 낸다 — RSI 의 "손실 0 → NaN" 처리가
-/// 여기에 기대므로 중요하다.
+/// 이동 합·평균·표준편차는 pandas 2.2.3 의 알고리즘(_libs/window/aggregations.pyx)을 그대로 옮겼다.
+/// 창을 밀며 Kahan 보정으로 더하고 빼므로 끝자리 오차가 창마다 새로 더한 값과 다르다. 두 선이
+/// 수학적으로 같은 날(예: %K == %D)에는 그 끝자리가 교차 판정을 가른다 — 창마다 더하던 구현은
+/// 007310.KS Stochastic 에서 매수일이 나흘 어긋났다. 창 안 값이 모두 같으면 그 값(표준편차는 0)을
+/// 그대로 내는 규칙도 여기서 온다 (FER 상장 전 같은 가격 구간의 볼린저 밴드).
 enum Series {
-    /// rolling(window).mean() — 창에 NaN 이 하나라도 있으면 NaN (min_periods = window)
-    static func mean(_ xs: [Double], _ window: Int) -> [Double] {
-        rolling(xs, window) { w in
-            // pandas 는 창 안 값이 모두 같으면 그 값을 그대로 낸다. 더해서 나누면 끝자리가 달라질 수 있다.
-            allEqual(w) ? w.first! : w.reduce(0, +) / Double(w.count)
+    /// pandas 의 이동 창 누적값 (roll_sum / roll_mean 공통). NaN 은 개수에 넣지 않는다.
+    private struct KahanWindow {
+        var nobs = 0, negCount = 0
+        var sum = 0.0, compAdd = 0.0, compRemove = 0.0
+        var sameRun = 0
+        var prev: Double
+
+        init(first: Double) { prev = first }
+
+        mutating func add(_ v: Double) {
+            guard !v.isNaN else { return }
+            nobs += 1
+            let y = v - compAdd
+            let t = sum + y
+            compAdd = t - sum - y
+            sum = t
+            if v.sign == .minus { negCount += 1 }  // signbit: -0.0 도 센다
+            sameRun = v == prev ? sameRun + 1 : 1
+            prev = v
+        }
+
+        mutating func remove(_ v: Double) {
+            guard !v.isNaN else { return }
+            nobs -= 1
+            let y = -v - compRemove
+            let t = sum + y
+            compRemove = t - sum - y
+            sum = t
+            if v.sign == .minus { negCount -= 1 }
         }
     }
 
+    /// 창 i 는 [i-window+1, i]. 앞 창에서 빠지는 값을 먼저 빼고 새 값을 더한다 (pandas 순서).
+    private static func slide<State>(_ xs: [Double], _ window: Int, _ state: inout State,
+                                     remove: (inout State, Double) -> Void, add: (inout State, Double) -> Void,
+                                     output: (State) -> Double) -> [Double] {
+        var out = [Double](repeating: .nan, count: xs.count)
+        guard window > 0 else { return out }
+        for i in xs.indices {
+            if i >= window { remove(&state, xs[i - window]) }
+            add(&state, xs[i])
+            out[i] = output(state)
+        }
+        return out
+    }
+
+    /// rolling(window).mean() — 창의 NaN 아닌 값이 window 개 미만이면 NaN (min_periods = window)
+    static func mean(_ xs: [Double], _ window: Int) -> [Double] {
+        guard let first = xs.first else { return [] }
+        var w = KahanWindow(first: first)
+        return slide(xs, window, &w, remove: { $0.remove($1) }, add: { $0.add($1) }) { w in
+            guard w.nobs >= window, w.nobs > 0 else { return .nan }
+            if w.sameRun >= w.nobs { return w.prev }
+            let r = w.sum / Double(w.nobs)
+            if w.negCount == 0 && r < 0 { return 0 }
+            if w.negCount == w.nobs && r > 0 { return 0 }
+            return r
+        }
+    }
+
+    /// rolling(window).sum()
     static func sum(_ xs: [Double], _ window: Int) -> [Double] {
-        rolling(xs, window) { w in w.reduce(0, +) }
+        guard let first = xs.first else { return [] }
+        var w = KahanWindow(first: first)
+        return slide(xs, window, &w, remove: { $0.remove($1) }, add: { $0.add($1) }) { w in
+            guard w.nobs >= window else { return .nan }
+            return w.sameRun >= w.nobs ? w.prev * Double(w.nobs) : w.sum
+        }
+    }
+
+    /// Welford 온라인 분산 (roll_var). 더할 때와 뺄 때 보정값을 따로 둔다.
+    private struct WelfordWindow {
+        var nobs = 0.0, mean = 0.0, ssqdm = 0.0, compAdd = 0.0, compRemove = 0.0
+        var sameRun = 0
+        var prev: Double
+
+        init(first: Double) { prev = first }
+
+        mutating func add(_ v: Double) {
+            guard !v.isNaN else { return }
+            nobs += 1
+            sameRun = v == prev ? sameRun + 1 : 1
+            prev = v
+            let prevMean = mean - compAdd
+            let y = v - compAdd
+            let t = y - mean
+            compAdd = t + mean - y
+            mean = nobs != 0 ? mean + t / nobs : 0
+            ssqdm += (v - prevMean) * (v - mean)
+        }
+
+        mutating func remove(_ v: Double) {
+            guard !v.isNaN else { return }
+            nobs -= 1
+            if nobs != 0 {
+                let prevMean = mean - compRemove
+                let y = v - compRemove
+                let t = y - mean
+                compRemove = t + mean - y
+                mean -= t / nobs
+                ssqdm -= (v - prevMean) * (v - mean)
+            } else {
+                mean = 0
+                ssqdm = 0
+            }
+        }
+    }
+
+    /// rolling(window).std() — 표본 표준편차(ddof=1). 음수로 떨어진 분산은 0 (zsqrt).
+    static func std(_ xs: [Double], _ window: Int) -> [Double] {
+        guard let first = xs.first else { return [] }
+        var w = WelfordWindow(first: first)
+        return slide(xs, window, &w, remove: { $0.remove($1) }, add: { $0.add($1) }) { w in
+            guard w.nobs >= Double(Swift.max(window, 1)), w.nobs > 1 else { return .nan }
+            if w.sameRun >= Int(w.nobs) { return 0 }
+            let variance = w.ssqdm / (w.nobs - 1)
+            return variance < 0 ? 0 : variance.squareRoot()
+        }
     }
 
     static func max(_ xs: [Double], _ window: Int) -> [Double] {
@@ -27,24 +137,7 @@ enum Series {
         rolling(xs, window) { w in w.min()! }
     }
 
-    /// rolling(window).std() — 표본 표준편차(ddof=1)
-    static func std(_ xs: [Double], _ window: Int) -> [Double] {
-        rolling(xs, window) { w in
-            guard w.count > 1 else { return .nan }
-            // pandas 는 값이 모두 같으면 정확히 0을 낸다. 직접 계산하면 평균의 끝자리 오차로 1e-15 쯤이
-            // 남아, 볼린저 밴드가 가격과 같아지는(하단 터치) 판정이 뒤집힌다. 상장 전 구간을 같은
-            // 가격으로 채운 종목(FER: 2020–2024 거래량 0)에서 매매 횟수가 41 → 19로 어긋났다.
-            if allEqual(w) { return 0 }
-            let m = w.reduce(0, +) / Double(w.count)
-            let ss = w.reduce(0) { $0 + ($1 - m) * ($1 - m) }
-            return (ss / Double(w.count - 1)).squareRoot()
-        }
-    }
-
-    private static func allEqual(_ w: ArraySlice<Double>) -> Bool {
-        w.allSatisfy { $0 == w.first! }
-    }
-
+    /// 최댓값·최솟값은 더하지 않아 오차가 없다 — 창마다 그대로 고른다
     private static func rolling(_ xs: [Double], _ window: Int, _ f: (ArraySlice<Double>) -> Double) -> [Double] {
         var out = [Double](repeating: .nan, count: xs.count)
         guard window > 0, xs.count >= window else { return out }
@@ -122,4 +215,12 @@ func pyFloorDiv(_ a: Double, _ b: Double) -> Double {
 
 private extension Double {
     func copysign(_ s: Double) -> Double { Double(signOf: s, magnitudeOf: self) }
+}
+
+/// numpy 실수의 round(x, n) (np.around: x·10ⁿ 을 짝수 쪽으로 반올림한 뒤 10ⁿ 으로 나눈다).
+/// 지표 값은 pandas 에서 꺼낸 numpy 실수라 파이썬 round 가 아니라 이 방식으로 반올림된다.
+func npRound(_ x: Double, _ n: Int) -> Double {
+    guard x.isFinite else { return x }
+    let scale = pow(10.0, Double(n))
+    return (x * scale).rounded(.toNearestOrEven) / scale
 }

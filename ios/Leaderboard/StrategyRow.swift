@@ -2,50 +2,38 @@ import BacktestCore
 import SwiftUI
 
 /// 전략 한 줄. 웹의 넓은 표 대신, 판정에 쓰는 두 값(B&H 승률·초과 중앙값)을 크게 보이고
-/// 나머지 지표는 한 줄로 줄였다. 누르면 전체 지표와 파라미터가 펼쳐진다.
+/// 나머지 지표는 한 줄로 줄였다. 누르면 Tear Sheet 로 간다.
 struct StrategyRow: View {
     let row: Row
     let dca: Bool
     let colorSlot: Int?
     let plotDisabled: Bool
-    let expanded: Bool
     let onTogglePlot: () -> Void
-    let onToggleExpand: () -> Void
 
     private var r: AutoStrategyResult { row.result }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
-                plotToggle
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Text(r.displayName).font(.subheadline.bold()).lineLimit(1)
-                        if row.beatsBenchmark {
-                            Text("▲ B&H")
-                                .font(.caption2.bold())
-                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(Theme.positive.opacity(0.18), in: Capsule())
-                                .foregroundStyle(Theme.positive)
-                        }
-                        if row.isBenchmark {
-                            Text("기준").font(.caption2).foregroundStyle(.secondary)
-                        }
+        HStack(alignment: .top, spacing: 10) {
+            plotToggle
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text(r.displayName).font(.subheadline.bold()).lineLimit(1)
+                    if row.beatsBenchmark {
+                        Text("▲ B&H")
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Theme.positive.opacity(0.18), in: Capsule())
+                            .foregroundStyle(Theme.positive)
                     }
-                    headline
-                    Text(secondaryLine)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                    if row.isBenchmark {
+                        Text("기준").font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
-                Spacer(minLength: 0)
-                Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                    .font(.caption).foregroundStyle(.tertiary)
-                    .padding(.top, 2)
+                headline
+                Text(secondaryLine)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            .contentShape(Rectangle())
-            .onTapGesture(perform: onToggleExpand)
-
-            if expanded { details.padding(.leading, 34) }
         }
         .padding(.vertical, 2)
     }
@@ -61,7 +49,8 @@ struct StrategyRow: View {
                 Image(systemName: "circle").foregroundStyle(plotDisabled ? Color.secondary.opacity(0.3) : .secondary)
             }
         }
-        .buttonStyle(.plain)
+        // borderless: 줄 전체(NavigationLink)가 아니라 이 버튼만 눌리게 한다
+        .buttonStyle(.borderless)
         .font(.title3)
         .frame(width: 24)
         .disabled(row.isBenchmark || plotDisabled)
@@ -88,49 +77,12 @@ struct StrategyRow: View {
     }
 
     private var secondaryLine: String {
-        var parts = ["\(dca ? "IRR" : "CAGR") \(Fmt.pct(r.cagr))", "MDD -\(r.maxDrawdown.formatted(.number.precision(.fractionLength(1))))%"]
+        var parts = [
+            "\(dca ? "IRR" : "CAGR") \(Fmt.pct(r.cagr))",
+            "MDD -\(r.maxDrawdown.formatted(.number.precision(.fractionLength(1))))%",
+            "거래 \(r.tradesCount)",
+        ]
         if row.rollWin != nil { parts.insert("총 \(Fmt.pct(r.totalReturn))", at: 0) }
         return parts.joined(separator: " · ")
-    }
-
-    private var details: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
-                GridRow {
-                    detail("총수익률", Fmt.pct(r.totalReturn))
-                    detail(dca ? "IRR" : "CAGR", Fmt.pct(r.cagr))
-                }
-                GridRow {
-                    detail("Sharpe", r.sharpeRatio.formatted(.number.precision(.fractionLength(2))))
-                    detail("MDD", "-\(r.maxDrawdown.formatted(.number.precision(.fractionLength(1))))%")
-                }
-                GridRow {
-                    detail("매매 승률", "\(Int(r.winRate.rounded()))%")
-                    detail("거래", "\(r.tradesCount)회")
-                }
-            }
-            if let first = r.firstTrade {
-                Text("첫 매매 \(first.description)").font(.caption).foregroundStyle(.secondary)
-            } else {
-                Text("기간 안에 매매가 없었습니다").font(.caption).foregroundStyle(.secondary)
-            }
-            if !r.paramSpecs.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(r.paramSpecs, id: \.name) { p in
-                        Text("\(p.name.replacingOccurrences(of: "_", with: " ")) = \(Fmt.param(r.params[p.name] ?? p.defaultValue))  ")
-                            .font(.caption.monospaced())
-                        + Text(p.description).font(.caption2).foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-    }
-
-    private func detail(_ label: String, _ value: String) -> some View {
-        HStack(spacing: 4) {
-            Text(label).foregroundStyle(.secondary)
-            Text(value).monospacedDigit()
-        }
-        .font(.caption)
     }
 }

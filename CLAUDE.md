@@ -150,6 +150,38 @@ BacktestResult · `/strategies` Strategies · `/screener` Screener · `/signals`
   like `invest_mode`, `cagr`, `monthly_contribution`, `total_invested`).
 - **The DB file `backend/backtest.db` and `backend/venv/` are gitignored.**
 
+## iOS app (`ios/`)
+
+A standalone iPhone app for the Auto leaderboard and the strategy tear sheet. It does not
+call this backend: it fetches Yahoo prices itself and runs a Swift port of the engine.
+
+- `ios/BacktestCore/` — Swift package: engine, all strategies (signals + chart indicators),
+  metrics, curves, rolling comparison, trend regimes, Yahoo parser. `swift test` there.
+- `ios/Leaderboard/` + `Leaderboard.xcodeproj` — SwiftUI app: leaderboard, tear sheet (period,
+  parameter comparison, optimizer), strategy guide. Universes (Nasdaq 100 / S&P 500 / KOSPI 200 /
+  ETF) in `Leaderboard/Universes.json` exported from `index_members`; other tickers can be typed in.
+- **The Swift port must match the backend exactly.** `ios/Fixtures/make_fixtures.py` runs the
+  backend code on cached prices and writes the expected output (leaderboard rows, curves,
+  trades, regimes, indicators, strategy definitions); `rolling_expected.mjs` adds rolling stats
+  via `frontend/src/utils/rolling.ts`. Tests compare against these files.
+- **Any change to a strategy, the engine, metrics, curves, regimes or rolling.ts must be mirrored
+  in Swift**, then regenerate the fixtures and run `swift test`:
+  ```bash
+  cd backend && ./venv/bin/python ../ios/Fixtures/make_fixtures.py
+  cd .. && node ios/Fixtures/rolling_expected.mjs ios/BacktestCore/Tests/BacktestCoreTests/Fixtures
+  cd ios/BacktestCore && swift test
+  ```
+  For a full check, write one index to a scratch dir (`--universe sp500 --out DIR`) and run
+  `BACKTEST_FIXTURES=DIR swift test`.
+- The optimizer (`services/optimizer.py`) is ported too (`Optimizer.swift`, incl. CPython's
+  `random.Random(0)` so random search picks the same combos). Changing it → regenerate
+  `ios/Fixtures/make_optimizer_fixtures.py` (~1.5 min) and run `swift test`.
+- The app's strategy guide text comes from `frontend/src/pages/Strategies.tsx`. After editing
+  that text run `node ios/Fixtures/export_strategy_guide.mjs`.
+- Pandas details the port depends on: NaN comparisons are false; rolling mean/std return the
+  value / exactly 0 when the window is constant; indicator values use numpy rounding, equity
+  and metrics use Python `round`; `cash // close` is Python float floor division.
+
 ## Adding a new strategy (checklist)
 
 1. Create `backend/services/strategies/<name>.py` subclassing `Strategy`.
@@ -157,3 +189,5 @@ BacktestResult · `/strategies` Strategies · `/screener` Screener · `/signals`
    `generate_signals`; optionally `compute_indicators`.
 3. Import it and add an instance to `STRATEGY_REGISTRY` in `strategies/__init__.py`.
 4. Run the app and confirm it appears in the Backtest form and Strategies page.
+5. Port it to `ios/BacktestCore` (register in `Strategies.all`, same order), regenerate the
+   iOS fixtures and run `swift test` (see iOS app above).

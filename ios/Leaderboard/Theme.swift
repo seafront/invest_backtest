@@ -39,9 +39,27 @@ enum Fmt {
         "\(v > 0 ? "+" : "")\(v.formatted(.number.precision(.fractionLength(1))))%p"
     }
 
-    static func usd(_ v: Double) -> String {
-        v.formatted(.currency(code: "USD").precision(.fractionLength(0)))
+    static func money(_ v: Double, _ c: Currency, digits: Int = 0) -> String {
+        v.formatted(.currency(code: c.rawValue).precision(.fractionLength(c == .krw ? 0 : digits)))
     }
+
+    /// 좁은 곳(축 눈금)용. ₩1.2억, $1.5M
+    static func compactMoney(_ v: Double, _ c: Currency) -> String {
+        let a = abs(v)
+        switch c {
+        case .krw:
+            if a >= 1e8 { return "₩\((v / 1e8).formatted(.number.precision(.fractionLength(a >= 1e9 ? 0 : 1))))억" }
+            if a >= 1e4 { return "₩\((v / 1e4).formatted(.number.precision(.fractionLength(0))))만" }
+            return "₩\(Int(v))"
+        case .usd:
+            if a >= 1e6 { return "$\((v / 1e6).formatted(.number.precision(.fractionLength(1))))M" }
+            if a >= 1e3 { return "$\((v / 1e3).formatted(.number.precision(.fractionLength(0))))K" }
+            return "$\(Int(v))"
+        }
+    }
+
+    /// 주가. 원화는 소수점 없이, 달러는 둘째 자리까지
+    static func price(_ v: Double, _ c: Currency) -> String { money(v, c, digits: 2) }
 
     /// 2.0 같은 실수는 2로 줄인다 (웹 fmtParam)
     static func param(_ v: Double) -> String {

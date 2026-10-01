@@ -4,11 +4,11 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var model: LeaderboardModel
     @State private var pickingTicker = false
-    @State private var expanded: Set<String> = []
     @FocusState private var amountFocused: Bool
+    @State private var path: [TearSheetRoute] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 inputSection
                 if let error = model.error {
@@ -27,7 +27,7 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .refreshable { await model.run(force: true, keepPlotted: true) }
             .sheet(isPresented: $pickingTicker) {
-                TickerPicker(selected: $model.ticker)
+                TickerPicker(selected: $model.ticker, recent: model.customTickers.map { ($0, model.name(for: $0)) })
             }
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -35,7 +35,22 @@ struct ContentView: View {
                     Button("완료") { amountFocused = false }
                 }
             }
-            .task { await model.restore() }
+            .navigationDestination(for: TearSheetRoute.self) { route in
+                TearSheetView(model: model, route: route)
+            }
+            .navigationDestination(for: GuideRoute.self) { StrategyGuideDetail(strategy: $0.strategy) }
+            .task {
+                #if DEBUG
+                // 화면 확인용: -debugTicker 005930.KS -debugOpen golden_cross 로 띄우면 그 종목을 돌려
+                // Tear Sheet 까지 연다 (시뮬레이터는 명령으로 화면을 누를 수 없다)
+                let args = UserDefaults.standard
+                if let t = args.string(forKey: "debugTicker") { model.ticker = t }
+                await model.restore()
+                if let open = args.string(forKey: "debugOpen") { path = [TearSheetRoute(strategy: open)] }
+                #else
+                await model.restore()
+                #endif
+            }
         }
     }
 
@@ -47,7 +62,7 @@ struct ContentView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.ticker).font(.headline)
-                        Text(model.listing?.name ?? "").font(.caption).foregroundStyle(.secondary)
+                        Text(model.name(for: model.ticker)).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Text("종목 변경").font(.subheadline)
@@ -64,7 +79,7 @@ struct ContentView: View {
 
             LabeledContent(model.mode == .lumpSum ? "초기 자본" : "월 납입액") {
                 TextField("금액", value: model.mode == .lumpSum ? $model.capital : $model.monthly,
-                          format: .currency(code: "USD").precision(.fractionLength(0)))
+                          format: .currency(code: model.currency.rawValue).precision(.fractionLength(0)))
                     .keyboardType(.numberPad)
                     .multilineTextAlignment(.trailing)
                     .focused($amountFocused)
@@ -83,7 +98,7 @@ struct ContentView: View {
             }
             .disabled(model.loading || (model.mode == .lumpSum ? model.capital : model.monthly) <= 0)
         } footer: {
-            Text("나스닥 100 종목 하나에 전략 \(Strategies.all.count - 1)개를 기본 파라미터로 최근 \(LeaderboardModel.years)년 돌려 Buy & Hold 와 비교합니다.")
+            Text("나스닥 100 · S&P 500 · 코스피 200 · ETF 종목 하나에 전략 \(Strategies.all.count - 1)개를 기본 파라미터로 최근 \(LeaderboardModel.years)년 돌려 Buy & Hold 와 비교합니다.")
         }
     }
 
@@ -101,7 +116,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(r.ticker).font(.title2.bold())
-                    Text(Listing.nasdaq100.first { $0.ticker == r.ticker }?.name ?? "")
+                    Text(model.name(for: r.ticker))
                         .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Text("\(r.dataStart.description) ~ \(r.dataEnd.description)")
@@ -110,7 +125,7 @@ struct ContentView: View {
                     Text("데이터가 \(r.dataStart.description)부터라 \(LeaderboardModel.years)년보다 짧습니다")
                         .font(.caption).foregroundStyle(.orange)
                 }
-                Text("\(r.mode == .lumpSum ? "거치식" : "적립식") · 투자원금 \(Fmt.usd(r.totalInvested))")
+                Text("\(r.mode == .lumpSum ? "거치식" : "적립식") · 투자원금 \(Fmt.money(r.totalInvested, model.resultCurrency))")
                     .font(.subheadline)
             }
 
@@ -168,21 +183,19 @@ struct ContentView: View {
     private func rowsSection(_ r: AutoBacktestResult) -> some View {
         Section {
             ForEach(model.rows) { row in
-                StrategyRow(
-                    row: row,
-                    dca: r.mode == .dca,
-                    colorSlot: model.plotted[row.id],
-                    plotDisabled: model.plotFull && model.plotted[row.id] == nil,
-                    expanded: expanded.contains(row.id),
-                    onTogglePlot: { model.togglePlot(row.id) },
-                    onToggleExpand: {
-                        if expanded.contains(row.id) { expanded.remove(row.id) } else { expanded.insert(row.id) }
-                    }
-                )
+                NavigationLink(value: TearSheetRoute(strategy: row.id)) {
+                    StrategyRow(
+                        row: row,
+                        dca: r.mode == .dca,
+                        colorSlot: model.plotted[row.id],
+                        plotDisabled: model.plotFull && model.plotted[row.id] == nil,
+                        onTogglePlot: { model.togglePlot(row.id) }
+                    )
+                }
             }
         } header: {
             HStack {
-                Text("전략")
+                Text("전략 · 누르면 Tear Sheet")
                 Spacer()
                 Menu {
                     Picker("정렬", selection: $model.sortKey) {

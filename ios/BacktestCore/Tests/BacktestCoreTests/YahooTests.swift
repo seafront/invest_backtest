@@ -26,7 +26,7 @@ import Testing
 @Test func agreesWithBackendCache() throws {
     let url = try #require(Bundle.module.url(forResource: "AAPL", withExtension: "json", subdirectory: "Yahoo"))
     let (bars, _) = try YahooChart.parse(Data(contentsOf: url))
-    let fx = try Fixture.load("AAPL")
+    let fx = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: Fixture.bundled("AAPL")))
     let cached = Dictionary(uniqueKeysWithValues: fx.prices.map { ($0.date, $0.close) })
     let diffs = bars.compactMap { b in cached[b.date].map { abs(b.close - $0) / $0 } }
     #expect(diffs.count > 1400)

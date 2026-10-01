@@ -30,11 +30,11 @@ struct ReturnChart: View {
 
     var body: some View {
         Chart {
-            RuleMark(y: .value("0", 0)).foregroundStyle(.secondary.opacity(0.4)).lineStyle(StrokeStyle(lineWidth: 0.5))
+            RuleMark(y: .value("0", 0)).foregroundStyle(Color.secondary.opacity(0.4)).lineStyle(StrokeStyle(lineWidth: 0.5))
             ForEach(series) { s in
                 ForEach(s.points, id: \.date) { p in
                     LineMark(
-                        x: .value("날짜", date(p.date)),
+                        x: .value("날짜", p.date.chartDate),
                         y: .value("수익률", p.ret),
                         series: .value("전략", s.name)
                     )
@@ -49,16 +49,7 @@ struct ReturnChart: View {
                 AxisValueLabel { if let d = v.as(Double.self) { Text("\(Int(d))%") } }
             }
         }
-        .chartXAxis {
-            AxisMarks(values: .stride(by: .year)) { _ in
-                AxisGridLine()
-                AxisValueLabel(format: .dateTime.year(.twoDigits))
-            }
-        }
-    }
-
-    private func date(_ d: Day) -> Date {
-        Date(timeIntervalSince1970: TimeInterval(d.ordinal) * 86400)
+        .yearAxis()
     }
 }
 
