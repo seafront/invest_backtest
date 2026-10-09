@@ -149,16 +149,41 @@ enum Series {
         return out
     }
 
-    /// ewm(span, adjust=False).mean() — y0 = x0, yt = (1-a)·yt-1 + a·xt
+    /// ewm(span, adjust=False).mean() — pandas 2.2.3 aggregations.ewm 을 그대로 옮겼다.
+    ///
+    /// 수식으로는 yt = (1-a)·yt-1 + a·xt 지만 pandas 는 ((w·yt-1) + (a·xt)) / (w + a) 로 계산하고
+    /// (w = 1-a, a 는 span 이 아니라 com = (span-1)/2 에서 구한다), 값이 그대로면 갱신하지 않는다.
+    /// 끝자리가 달라, 빠른 선과 느린 선이 수학적으로 같은 구간(FER 상장 전 같은 가격)에서 교차 판정이
+    /// 뒤집혔다.
     static func ewm(_ xs: [Double], span: Int) -> [Double] {
-        let a = 2.0 / (Double(span) + 1)
+        guard let first = xs.first else { return [] }
+        let com = (Double(span) - 1) / 2
+        let alpha = 1 / (1 + com)
+        let oldWtFactor = 1 - alpha
+        let newWt = alpha  // adjust=False
         var out = [Double](repeating: .nan, count: xs.count)
-        var prev: Double?
-        for (i, x) in xs.enumerated() {
-            guard !x.isNaN else { out[i] = prev ?? .nan; continue }
-            let y = prev.map { (1 - a) * $0 + a * x } ?? x
-            out[i] = y
-            prev = y
+        var weighted = first
+        var nobs = first.isNaN ? 0 : 1
+        out[0] = nobs >= 1 ? weighted : .nan
+        var oldWt = 1.0
+        for i in xs.indices.dropFirst() {
+            let cur = xs[i]
+            let isObservation = !cur.isNaN
+            if isObservation { nobs += 1 }
+            if !weighted.isNaN {
+                // ignore_na=False: 빈 값에서도 가중치는 줄어든다
+                oldWt *= oldWtFactor
+                if isObservation {
+                    if weighted != cur {
+                        weighted = oldWt * weighted + newWt * cur
+                        weighted /= (oldWt + newWt)
+                    }
+                    oldWt = 1
+                }
+            } else if isObservation {
+                weighted = cur
+            }
+            out[i] = nobs >= 1 ? weighted : .nan
         }
         return out
     }
