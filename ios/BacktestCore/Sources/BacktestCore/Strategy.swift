@@ -19,7 +19,7 @@ public struct Bar: Codable, Hashable, Sendable {
     }
 }
 
-public enum Action: String, Sendable {
+public enum Action: String, Sendable, Codable {
     case buy = "BUY"
     case sell = "SELL"
 }

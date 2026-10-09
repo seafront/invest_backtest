@@ -158,7 +158,9 @@ call this backend: it fetches Yahoo prices itself and runs a Swift port of the e
 - `ios/BacktestCore/` — Swift package: engine, all strategies (signals + chart indicators),
   metrics, curves, rolling comparison, trend regimes, Yahoo parser. `swift test` there.
 - `ios/Leaderboard/` + `Leaderboard.xcodeproj` — SwiftUI app: leaderboard, tear sheet (period,
-  parameter comparison, optimizer), strategy guide. Universes (Nasdaq 100 / S&P 500 / KOSPI 200 /
+  parameter comparison, optimizer), Signals (own watchlist, separate from the web's; checks on open
+  and via iOS background refresh after each close, with local notifications; background keys in
+  `ios/Leaderboard-Info.plist`), strategy guide. Universes (Nasdaq 100 / S&P 500 / KOSPI 200 /
   ETF) in `Leaderboard/Universes.json` exported from `index_members`; other tickers can be typed in.
 - **The Swift port must match the backend exactly.** `ios/Fixtures/make_fixtures.py` runs the
   backend code on cached prices and writes the expected output (leaderboard rows, curves,
@@ -178,7 +180,11 @@ call this backend: it fetches Yahoo prices itself and runs a Swift port of the e
   `ios/Fixtures/make_optimizer_fixtures.py` (~1.5 min) and run `swift test`.
 - The app's strategy guide text comes from `frontend/src/pages/Strategies.tsx`. After editing
   that text run `node ios/Fixtures/export_strategy_guide.mjs`.
-- Pandas details the port depends on: NaN comparisons are false; rolling mean/std return the
+- Signals judgement mirrors `services/signal_monitor.py` (closed bars only, same transitions);
+  its fixtures are in `make_fixtures.py` too.
+- Pandas details the port depends on: rolling sum/mean/std and `ewm` follow pandas 2.2.3's exact
+  algorithms (Kahan/Welford windows, ewm's weighted-average form) because ties between two lines
+  are decided by the last bits; NaN comparisons are false; rolling mean/std return the
   value / exactly 0 when the window is constant; indicator values use numpy rounding, equity
   and metrics use Python `round`; `cash // close` is Python float floor division.
 

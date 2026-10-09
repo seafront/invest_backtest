@@ -126,6 +126,9 @@ struct TearSheetView: View {
                 NavigationLink(value: GuideRoute(strategy: r.strategyName)) {
                     Label("전략 가이드에서 작동 원리 보기", systemImage: "book").font(.caption)
                 }
+                if !r.isBenchmark {
+                    WatchButton(ticker: r.ticker, strategy: r.strategyName, params: r.values)
+                }
             }
         }
     }

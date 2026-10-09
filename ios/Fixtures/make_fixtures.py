@@ -28,7 +28,7 @@ from models import IndexMember  # noqa: E402
 import routers.backtests as bt  # noqa: E402
 from routers.backtests import _summarize, _trading_span, _years_before  # noqa: E402
 from schemas import AutoBacktestResponse, SimulateRequest  # noqa: E402
-from services import optimizer, regimes  # noqa: E402
+from services import optimizer, regimes, signal_monitor  # noqa: E402
 from services.backtest_engine import run_backtest, warmup_days  # noqa: E402
 from services.data_fetcher import get_cached_data  # noqa: E402
 from services.strategies import list_strategies  # noqa: E402
@@ -100,6 +100,39 @@ def comparisons(db, ticker: str, end: date, df) -> list[dict]:
             })
     finally:
         bt._load_prices = orig
+    return out
+
+
+def signal_cases(db, ticker: str, end: date) -> list[dict]:
+    """워치리스트 판정 (services/signal_monitor.py transitions·status). 기본값과 변형 둘, 전략마다.
+
+    캐시는 Signals 자동 확인으로 끝 날짜 뒤까지 늘어나 있을 수 있다 — 마지막 봉을 끝 날짜로 고정한다.
+    """
+    from types import SimpleNamespace
+    orig = signal_monitor._last_cached
+    signal_monitor._last_cached = lambda _db, t: min(orig(_db, t), end)
+    try:
+        return _signal_cases(db, ticker, SimpleNamespace)
+    finally:
+        signal_monitor._last_cached = orig
+
+
+def _signal_cases(db, ticker: str, SimpleNamespace) -> list[dict]:
+    out = []
+    for strategy in list_strategies():
+        defaults = {p["name"]: p["default"] for p in strategy.param_schema}
+        for params in [defaults, *(variant_params(strategy) if strategy.param_schema else [])]:
+            w = SimpleNamespace(id=0, ticker=ticker, strategy_name=strategy.name, params=params,
+                                backtest_id=None, created_at=None, baseline_date=None)
+            st = signal_monitor.status(db, w)
+            trans, _ = signal_monitor.transitions(db, w)
+            out.append({
+                "strategy_name": strategy.name, "params": st["params"],
+                "transitions": [{"date": str(t["date"]), "action": t["action"], "price": t["price"]} for t in trans],
+                "last_bar_date": str(st["last_bar_date"]), "last_close": st["last_close"],
+                "position": st["position"], "bars_since": st["bars_since"],
+                "since_return": st["since_return"], "is_new": st["is_new"],
+            })
     return out
 
 
@@ -209,6 +242,7 @@ def fixture(db, ticker: str, end: date) -> dict:
         indicators = indicators or ind  # 지표는 투자 방식과 무관하다
     return {"ticker": ticker, "end_date": str(end), "years": YEARS, "prices": prices,
             "cases": out_cases, "indicators": indicators, "comparisons": comparisons(db, ticker, end, df),
+            "signals": signal_cases(db, ticker, end),
             # 파라미터 화면이 쓰는 전략 정의(설명·기본값·범위)도 백엔드와 같아야 한다
             "strategies": [{"name": s.name, "display_name": s.display_name, "description": s.description,
                             "params": s.param_schema} for s in list_strategies()]}

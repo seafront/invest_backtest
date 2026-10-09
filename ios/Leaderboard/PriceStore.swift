@@ -63,6 +63,9 @@ enum Currency: String {
 /// 전체 구간을 다시 받는다 (종목 하나 6년치가 170KB, 0.5초). 백엔드 캐시는 덧붙이는 방식이라
 /// 배당주는 웹 결과와 조금 다를 수 있고, 이쪽이 최신 기준이다.
 actor PriceStore {
+    /// Leaderboard 와 Signals 가 같은 시세 캐시를 쓴다
+    static let shared = PriceStore()
+
     struct Prices: Codable {
         let ticker: String
         let fetchedAt: Date

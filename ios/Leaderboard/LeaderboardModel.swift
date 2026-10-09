@@ -76,7 +76,7 @@ final class LeaderboardModel {
     private(set) var notice: String?
     private(set) var pricesFetchedAt: Date?
 
-    private let store = PriceStore()
+    private let store = PriceStore.shared
     private let defaults = UserDefaults.standard
 
     init() {
